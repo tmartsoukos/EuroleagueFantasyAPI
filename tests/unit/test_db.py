@@ -34,6 +34,7 @@ class TestSchema:
             "games",
             "player_games",
             "predictions",
+            "player_availability",
         }
         columns = {
             name: [c["name"] for c in inspector.get_columns(name)]
@@ -135,7 +136,7 @@ class TestSchema:
     def test_create_all_is_safe_to_repeat(self, engine):
         create_all(engine)
         create_all(engine)
-        assert len(inspect(engine).get_table_names()) == 5
+        assert len(inspect(engine).get_table_names()) == 6
 
     def test_foreign_keys_are_enforced_in_sqlite(self, engine):
         with pytest.raises(IntegrityError), engine.begin() as conn:

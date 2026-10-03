@@ -12,17 +12,23 @@
 - 2026/31, 32, 33: μελλοντικοί αγώνες (`played = false` στο schedule).
 """
 
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
 import pytest
-from synthetic_league import League, make_league
+from api_support import REAL_TODAY, FakeClock, make_settings, noon_utc
+from sqlalchemy import delete
+from synthetic_league import League, make_league, write_to_database
 
 from elfantasy.config import get_settings
+from elfantasy.db import models
+from elfantasy.db.session import get_engine
 from elfantasy.features.build import FEATURE_COLUMNS, build_features
 from elfantasy.ingest import clean, pipeline
 from elfantasy.ingest.fetch import RawCache
 from elfantasy.model.artifact import ModelBundle, library_versions
+from elfantasy.model.predict import Predictor
 from elfantasy.model.train import DEFAULT_XGB, ModelSpec, fit_ridge, fit_xgboost_final
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -173,3 +179,81 @@ def tiny_xgb_bundle(synthetic_frame: pd.DataFrame) -> ModelBundle:
 def tiny_ridge_bundle(synthetic_frame: pd.DataFrame) -> ModelBundle:
     """Μικρό μοντέλο Ridge εκπαιδευμένο στα συνθετικά δεδομένα."""
     return _tiny_bundle(synthetic_frame, "ridge", "test-ridge-v1")
+
+
+# --------------------------------------------------------------------------------------
+# Φάση 4: API (TestClient πάνω σε προσωρινή βάση SQLite και μικρό μοντέλο)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def api_today(synthetic_league: League) -> date:
+    """Η ημέρα μετά τον τελευταίο παιγμένο αγώνα του συνθετικού πρωταθλήματος: οι επόμενοι
+    αγώνες των ομάδων είναι στο πρόγραμμα."""
+    return synthetic_league.last_played_date + timedelta(days=1)
+
+
+@pytest.fixture(scope="session")
+def api_engine(synthetic_league: League, tmp_path_factory):
+    """Βάση SQLite με το συνθετικό πρωτάθλημα (όλοι οι πίνακες, και ο κενός player_availability)."""
+    path = tmp_path_factory.mktemp("api") / "league.db"
+    engine = get_engine(f"sqlite:///{path.as_posix()}")
+    write_to_database(engine, synthetic_league)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def api_predictor(tiny_xgb_bundle: ModelBundle, api_engine, api_today: date) -> Predictor:
+    """Ένας κοινός Predictor για όλα τα tests του API (η cache του κρατά τον υπολογισμό)."""
+    return Predictor(tiny_xgb_bundle, api_engine, today=lambda: api_today)
+
+
+@pytest.fixture
+def api_clock(api_today: date) -> FakeClock:
+    """Ρολόι των tests: 12:00 UTC της ημέρας `api_today`."""
+    return FakeClock(noon_utc(api_today))
+
+
+@pytest.fixture
+def client(api_engine, api_predictor: Predictor, api_clock: FakeClock):
+    """TestClient της εφαρμογής πάνω στο συνθετικό πρωτάθλημα, με κλειδί διαχειριστή `ADMIN_KEY`.
+
+    Τα σφάλματα του server επιστρέφονται ως απαντήσεις (`raise_server_exceptions=False`). Η
+    διαθεσιμότητα που γράφει το test σβήνεται στο τέλος, ώστε η κοινή βάση να μένει καθαρή.
+    """
+    from fastapi.testclient import TestClient
+
+    from elfantasy.api.main import create_app
+
+    app = create_app(
+        settings=make_settings(), engine=api_engine, predictor=api_predictor, clock=api_clock
+    )
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+    with api_engine.begin() as connection:
+        connection.execute(delete(models.player_availability))
+
+
+@pytest.fixture(scope="session")
+def real_client(fixture_database_url: str, tiny_xgb_bundle: ModelBundle):
+    """TestClient πάνω στη βάση των ΠΡΑΓΜΑΤΙΚΩΝ fixtures (7 αγώνες και 3 μελλοντικοί του 2026).
+
+    Μόνο για ανάγνωση: κανένα test δεν πρέπει να γράφει στη βάση (π.χ. διαθεσιμότητα). Το ρολόι
+    είναι σταθερό στις 12:00 UTC της 2026-10-03.
+    """
+    from fastapi.testclient import TestClient
+
+    from elfantasy.api.main import create_app
+
+    engine = get_engine(fixture_database_url)
+    predictor = Predictor(tiny_xgb_bundle, engine, today=lambda: REAL_TODAY)
+    app = create_app(
+        settings=make_settings(),
+        engine=engine,
+        predictor=predictor,
+        clock=FakeClock(noon_utc(REAL_TODAY)),
+    )
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+    engine.dispose()

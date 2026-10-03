@@ -11,6 +11,7 @@ DateTime), ώστε το `metadata.create_all()` να δουλεύει σε κά
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -29,6 +30,7 @@ from sqlalchemy import (
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
@@ -137,4 +139,22 @@ predictions = Table(
     Column("model_version", String, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Index("ix_predictions_player_id", "player_id"),
+)
+
+# Διαθεσιμότητα παικτών (Φάση 4): χειροκίνητο override για τραυματισμούς και απουσίες, μία γραμμή
+# ανά παίκτη. Γράφεται ΜΟΝΟ από το API (POST/DELETE /availability, με X-API-Key), ποτέ από το
+# ingestion. Τα `out` και `doubtful` εφαρμόζονται από το API μετά την πρόβλεψη του μοντέλου και
+# δεν περνούν ως feature (docs/API.md). Παίκτης χωρίς γραμμή θεωρείται διαθέσιμος. Το
+# `updated_at` ορίζεται πάντα από τον server, σε UTC. Το CHECK constraint δουλεύει αυτούσιο σε
+# SQLite και Postgres. Το ίδιο το API δημιουργεί τον πίνακα στο startup αν λείπει (checkfirst).
+player_availability = Table(
+    "player_availability",
+    metadata,
+    Column("player_id", String, ForeignKey("players.player_id"), primary_key=True),
+    Column("status", String, nullable=False),  # out | doubtful | available
+    Column("source", String),  # ελεύθερο κείμενο: από πού προέρχεται η πληροφορία
+    Column("note", String),  # ελεύθερο κείμενο (το API επιτρέπει έως 500 χαρακτήρες)
+    Column("expected_return", Date),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("status IN ('out', 'doubtful', 'available')", name="status"),
 )

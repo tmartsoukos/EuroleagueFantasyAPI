@@ -26,6 +26,12 @@ testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 # importlib: επιτρέπει αρχεία δοκιμών με το ίδιο όνομα σε διαφορετικούς φακέλους (unit/integration).
 addopts = "-ra --import-mode=importlib"
+filterwarnings = [
+    # Το Starlette 1.7 θεωρεί παρωχημένο το `httpx` στο TestClient και προτείνει το `httpx2`. Το
+    # project χρησιμοποιεί ακόμη το `httpx` (requirements-dev.txt)· η προειδοποίηση αγνοείται
+    # μόνο για αυτή τη συγκεκριμένη περίπτωση, ώστε να μη θάβει άλλες προειδοποιήσεις.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
