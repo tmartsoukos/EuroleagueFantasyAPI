@@ -200,3 +200,74 @@ class TestDegradedStartup:
         start(state)
         assert state.problems == {} and state.service is not None
         stop(state)
+
+
+class TestPostgresStartup:
+    """Στο Postgres το startup ΕΛΕΓΧΕΙ ότι ο πίνακας υπάρχει, αλλά δεν τον δημιουργεί ποτέ (τον
+    δημιουργούν τα migrations, με RLS). Με ψεύτικο engine, χωρίς σύνδεση."""
+
+    URL = "postgresql://postgres.abc:S3cr3t-Pa55@db.example.com:5432/postgres"
+
+    @pytest.fixture
+    def fake_engine(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from elfantasy.db import session
+
+        engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), disposed=False)
+        engine.dispose = lambda: setattr(engine, "disposed", True)
+        created = []
+        monkeypatch.setattr(app_state, "get_engine", lambda url, **kwargs: engine)
+        monkeypatch.setattr(session.metadata, "create_all", lambda *a, **k: created.append(a))
+        monkeypatch.setattr(session, "schema_is_managed_by_migrations", lambda e: True)
+        engine.created = created
+        return engine
+
+    def test_an_existing_table_is_accepted_and_nothing_is_created(self, fake_engine, monkeypatch):
+        from elfantasy.db import session
+
+        monkeypatch.setattr(session, "missing_tables", lambda engine, tables: [])
+        state = AppState(settings=make_settings(database_url=self.URL))
+        app_state._start_database(state, state.settings)
+        assert state.problems == {} and state.engine is fake_engine and state.owns_engine
+        assert fake_engine.created == []
+
+    def test_a_missing_table_makes_the_app_degraded_without_creating_it(
+        self, fake_engine, monkeypatch, caplog
+    ):
+        from elfantasy.db import session
+
+        monkeypatch.setattr(
+            session, "missing_tables", lambda engine, tables: ["player_availability"]
+        )
+        state = AppState(settings=make_settings(database_url=self.URL))
+        with caplog.at_level("ERROR"):
+            app_state._start_database(state, state.settings)
+        assert state.problems == {"database": PROBLEM_DATABASE}
+        assert fake_engine.created == []
+        assert "player_availability" in caplog.text and "S3cr3t-Pa55" not in caplog.text
+
+    def test_start_stops_before_loading_the_model_when_the_schema_is_missing(
+        self, fake_engine, monkeypatch
+    ):
+        from elfantasy.db import session
+
+        monkeypatch.setattr(
+            session, "missing_tables", lambda engine, tables: ["player_availability"]
+        )
+        loaded = []
+        monkeypatch.setattr(Predictor, "load", classmethod(lambda cls, *a, **k: loaded.append(1)))
+        state = AppState(settings=make_settings(database_url=self.URL))
+        start(state)
+        assert state.problems == {"database": PROBLEM_DATABASE} and loaded == []
+        stop(state)
+        assert fake_engine.disposed  # η engine που δημιούργησε η εφαρμογή κλείνει
+
+    def test_an_unreachable_postgres_is_a_degraded_start_without_a_traceback_password(self, caplog):
+        url = "postgresql://postgres:S3cr3t-Pa55@127.0.0.1:1/postgres?connect_timeout=1"
+        state = AppState(settings=make_settings(database_url=url))
+        with caplog.at_level("ERROR"):
+            start(state)
+        assert state.problems == {"database": PROBLEM_DATABASE} and state.service is None
+        assert "S3cr3t-Pa55" not in caplog.text
+        stop(state)

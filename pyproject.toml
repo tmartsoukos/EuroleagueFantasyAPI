@@ -19,6 +19,10 @@ dependencies = { file = ["requirements.txt"] }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Τα migrations (αρχεία SQL της Φάσης 5) ανήκουν στο πακέτο και ακολουθούν το `pip install`.
+[tool.setuptools.package-data]
+elfantasy = ["db/migrations/*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Το "tests" στο pythonpath επιτρέπει import των βοηθητικών modules των tests (synthetic_league,
@@ -26,6 +30,11 @@ testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 # importlib: επιτρέπει αρχεία δοκιμών με το ίδιο όνομα σε διαφορετικούς φακέλους (unit/integration).
 addopts = "-ra --import-mode=importlib"
+markers = [
+    # Τα tests αυτά τρέχουν σε πραγματικό ΤΟΠΙΚΟ Postgres (TEST_DATABASE_URL ή pixeltable-pgserver)
+    # και παραλείπονται αν δεν υπάρχει. Εξαίρεση από το τρέξιμο: `pytest -m "not postgres"`.
+    "postgres: needs a real local PostgreSQL server (TEST_DATABASE_URL or pixeltable-pgserver)",
+]
 filterwarnings = [
     # Το Starlette 1.7 θεωρεί παρωχημένο το `httpx` στο TestClient και προτείνει το `httpx2`. Το
     # project χρησιμοποιεί ακόμη το `httpx` (requirements-dev.txt)· η προειδοποίηση αγνοείται

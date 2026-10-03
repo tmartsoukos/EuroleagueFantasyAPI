@@ -16,14 +16,14 @@ Predictor χωρίς την πραγματική βάση:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 from sqlalchemy import Engine
 
 from elfantasy.db import models
-from elfantasy.db.session import create_all
+from elfantasy.db.session import ensure_schema
 from elfantasy.scoring import fantasy_score
 
 BOX_COLUMNS = (
@@ -348,9 +348,51 @@ def _history_row(
     }
 
 
+def add_recorded_rows(engine: Engine, league: League) -> None:
+    """Προσθέτει σε μια βάση που περιέχει ήδη το πρωτάθλημα: 3 καταγεγραμμένες προβλέψεις,
+    μία εγγραφή διαθεσιμότητας και έναν παίκτη με όνομα που έχει τόνους και ειδικά γράμματα.
+
+    Οι ώρες `created_at` και `updated_at` δίνονται σε UTC, για να ελέγχεται η μεταφορά χρόνων.
+    """
+    first_future = league.schedule.iloc[0]
+    players = league.players["player_id"].tolist()
+    with engine.begin() as connection:
+        connection.execute(
+            models.players.insert().values(
+                player_id="P999999", name="ĐORĐEVIĆ, ΓΙΩΡΓΟΣ ñ", first_season=2023, last_season=2023
+            )
+        )
+        for index, player_id in enumerate(players[:3]):
+            connection.execute(
+                models.predictions.insert().values(
+                    player_id=player_id,
+                    season=int(first_future["season"]),
+                    gamecode=int(first_future["gamecode"]),
+                    predicted_fantasy=10.5 + index,
+                    predicted_pir=9.25 + index,
+                    model_version="v-test",
+                    as_of=date(2026, 10, 3),
+                    created_at=datetime(2026, 10, 3, 12, 30, 15, 123456, tzinfo=UTC),
+                )
+            )
+        connection.execute(
+            models.player_availability.insert().values(
+                player_id=players[0],
+                status="doubtful",
+                source="test",
+                note="ankle, Γειά σου",
+                expected_return=date(2026, 10, 9),
+                updated_at=datetime(2026, 10, 3, 9, 0, tzinfo=UTC),
+            )
+        )
+
+
 def write_to_database(engine: Engine, league: League) -> None:
-    """Γράφει το πρωτάθλημα στη βάση (σχήμα του project): teams, players, games, player_games."""
-    create_all(engine)
+    """Γράφει το πρωτάθλημα στη βάση (σχήμα του project): teams, players, games, player_games.
+
+    Στην SQLite δημιουργεί τους πίνακες αν λείπουν· στο Postgres πρέπει να έχουν ήδη δημιουργηθεί
+    από τα migrations (αλλιώς σηκώνει `SchemaNotInitialisedError`)."""
+    ensure_schema(engine)
     with engine.begin() as connection:
         connection.execute(
             models.teams.insert(),

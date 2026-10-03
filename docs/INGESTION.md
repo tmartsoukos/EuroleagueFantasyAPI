@@ -14,7 +14,8 @@ data/raw/*.parquet   ingest/clean.py   scoring.py          db/ (SQLite ή Postgr
 | `src/elfantasy/ingest/fetch.py` | Δικό μας loop ανά αγώνα με περιορισμό ρυθμού, retry και cache σε parquet |
 | `src/elfantasy/ingest/clean.py` | Καθαρές συναρτήσεις πάνω σε DataFrame: καθαρισμός, ημερομηνίες, ονόματα, έλεγχοι ποιότητας |
 | `src/elfantasy/scoring.py` | `pir()`, `fantasy_score()` και οι vectorized εκδόσεις τους |
-| `src/elfantasy/db/models.py`, `db/session.py` | Σχήμα SQLAlchemy Core, engine και idempotent `upsert()` |
+| `src/elfantasy/db/models.py`, `db/session.py` | Σχήμα SQLAlchemy Core, engine (SQLite ή Postgres) και idempotent `upsert()` |
+| `src/elfantasy/db/migrate.py`, `db/transfer.py` | Φάση 5: migrations του Postgres και μεταφορά δεδομένων SQLite → Postgres (`docs/DATABASE.md`) |
 | `src/elfantasy/ingest/pipeline.py` | CLI: όλη η ροή |
 | `src/elfantasy/ingest/verify.py` | CLI: επαλήθευση του dataset στη βάση |
 | `src/elfantasy/config.py` | Ρυθμίσεις από μεταβλητές περιβάλλοντος και `.env` |
@@ -41,7 +42,7 @@ PYTHONUTF8=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m elfantasy.ingest
 |---|---|---|
 | `--seasons` | `2016-<τρέχουσα σεζόν>` | Σεζόν ως έτη έναρξης: `2016-2026` (εύρος), `2024,2025` (λίστα) ή `2025` |
 | `--rps` | `1.0` | Αιτήματα ανά δευτερόλεπτο. Δεν επιτρέπεται πάνω από `1.5` |
-| `--db` | `DATABASE_URL` των ρυθμίσεων | URL βάσης, π.χ. `sqlite:///data/elfantasy.db` |
+| `--db` | `DATABASE_URL` των ρυθμίσεων | URL βάσης: `sqlite:///data/elfantasy.db` ή Postgres (Supabase). Σε Postgres προτίμησε το `DATABASE_URL` του περιβάλλοντος αντί για το `--db` (ο κωδικός δεν μένει στο ιστορικό του shell· στο log το URL γράφεται πάντα με κρυμμένο κωδικό). Σε Postgres το pipeline **δεν δημιουργεί πίνακες**: πρέπει να έχουν εφαρμοστεί τα migrations (`docs/DATABASE.md`) |
 | `--update` | όχι | Μόνο η νεότερη σεζόν (η τελευταία του `--seasons` ή η τρέχουσα). Τα results και το schedule ανανεώνονται πάντα και κατεβαίνουν μόνο οι αγώνες που λείπουν από το cache |
 | `--no-fetch` | όχι | Καμία κλήση δικτύου |
 | `--data-dir` | `DATA_DIR` των ρυθμίσεων (`data`) | Φάκελος για cache, αναφορές και logs |
@@ -125,7 +126,9 @@ PYTHONUTF8=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m elfantasy.ingest
 
 ## 5. Σχήμα της βάσης (`db/models.py`)
 
-Το ίδιο σχήμα δουλεύει σε SQLite και σε Postgres (Supabase, Φάση 5): χρησιμοποιούνται μόνο γενικοί τύποι της SQLAlchemy. Η εγγραφή γίνεται με `upsert()`, που επιλέγει `insert ... on conflict do update` ανάλογα με το dialect, άρα το pipeline είναι idempotent. Στο SQLite ενεργοποιούνται τα foreign keys, ώστε λάθη στη σειρά εισαγωγής να φαίνονται και τοπικά. Η εγγραφή γίνεται σε μία συναλλαγή με σειρά `teams`, `players`, `games`, `player_games`. Τα URL Postgres της μορφής `postgresql://` μετατρέπονται αυτόματα σε `postgresql+psycopg://` (driver `psycopg` 3).
+Το ίδιο σχήμα δουλεύει σε SQLite και σε Postgres (Supabase, Φάση 5): χρησιμοποιούνται μόνο γενικοί τύποι της SQLAlchemy (`Text`, `Integer`, `Double`, `Boolean`, `Date`, `DateTime`). Η εγγραφή γίνεται με `upsert()`, που επιλέγει `insert ... on conflict do update` ανάλογα με το dialect, άρα το pipeline είναι idempotent. Στο SQLite ενεργοποιούνται τα foreign keys, ώστε λάθη στη σειρά εισαγωγής να φαίνονται και τοπικά. Η εγγραφή γίνεται σε μία συναλλαγή με σειρά `teams`, `players`, `games`, `player_games`. Τα URL Postgres της μορφής `postgresql://` μετατρέπονται αυτόματα σε `postgresql+psycopg://` (driver `psycopg` 3).
+
+**Ποια διαδρομή ισχύει για τη δημιουργία του σχήματος.** Στην **SQLite** το pipeline δημιουργεί τους πίνακες που λείπουν (`create_all`, μέσω του `ensure_schema`). Στο **Postgres** δεν δημιουργεί ποτέ τίποτα: το σχήμα δημιουργείται μόνο από τα migrations (`python -m elfantasy.db.migrate`, `docs/DATABASE.md`), γιατί ένας πίνακας που δημιουργείται εκτός migrations δεν έχει Row Level Security. Το pipeline ελέγχει (από τους καταλόγους του συστήματος) ότι υπάρχουν όλοι οι πίνακες και, αν λείπει κάποιος, αποτυγχάνει πριν από κάθε εγγραφή με το μήνυμα «database tables are missing: …». Ένας κενός πίνακας `predictions` της παλιάς διάταξης σε τοπική βάση SQLite αντικαθίσταται αυτόματα (βλ. παρακάτω).
 
 | Πίνακας | Κλειδί | Στήλες |
 |---|---|---|
@@ -133,11 +136,14 @@ PYTHONUTF8=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m elfantasy.ingest
 | `players` | `player_id` | `name`, `first_season`, `last_season` |
 | `games` | `(season, gamecode)` | `phase`, `round`, `game_date`, `tipoff_utc` (UTC, nullable), `home_code`, `away_code`, `home_score`, `away_score` (nullable), `played`, `winner_code` (nullable) |
 | `player_games` | `(season, gamecode, player_id)` | `team_code`, `opp_code`, `home`, `is_starter`, `minutes`, `dnp`, `points`, `fg2_made`, `fg2_attempted`, `fg3_made`, `fg3_attempted`, `ft_made`, `ft_attempted`, `off_reb`, `def_reb`, `total_reb`, `assists`, `steals`, `turnovers`, `blocks_favour`, `blocks_against`, `fouls_committed`, `fouls_received`, `plus_minus` (nullable), `valuation` (από το API), `pir` (υπολογισμένο), `won`, `fantasy_score` |
-| `predictions` | `id` (αυτόματο) | `player_id`, `season`, `gamecode` (nullable), `predicted_fantasy`, `predicted_pir` (nullable), `model_version`, `created_at`. Δεν γράφεται από το ingestion: χρησιμοποιείται στις Φάσεις 4 και 5 |
+| `predictions` | `id` (αυτόματο) και `UNIQUE (player_id, season, gamecode, model_version, as_of)` | `player_id`, `season`, `gamecode`, `predicted_fantasy`, `predicted_pir` (nullable), `model_version`, `as_of`, `created_at`. **Φάση 5:** καταγεγραμμένες προβλέψεις. Δεν γράφεται από το ingestion ούτε από το API, μόνο από το `python -m elfantasy.model.record_predictions` (`docs/DATABASE.md`, ενότητα 10) |
+| `player_availability` | `player_id` | `status` (`out`, `doubtful`, `available`), `source`, `note`, `expected_return` (nullable), `updated_at`. Γράφεται μόνο από το API (Φάση 4, `docs/API.md` ενότητα 7)· δεν γράφεται από το ingestion |
 
-Foreign keys: `games.home_code`, `away_code`, `winner_code` → `teams`, `player_games.player_id` → `players`, `player_games.team_code`, `opp_code` → `teams`, `player_games (season, gamecode)` → `games`, `predictions.player_id` → `players`. Δεν υπάρχει foreign key από τα `predictions` προς τα `games`, ώστε να επιτρέπονται προβλέψεις και όταν δεν υπάρχει προγραμματισμένος αγώνας.
+Foreign keys: `games.home_code`, `away_code`, `winner_code` → `teams`, `player_games.player_id` → `players`, `player_games.team_code`, `opp_code` → `teams`, `player_games (season, gamecode)` → `games`, `predictions.player_id` → `players`, `predictions (season, gamecode)` → `games`, `player_availability.player_id` → `players`. Από τη Φάση 5 το `predictions` έχει υποχρεωτικά `season` και `gamecode` με foreign key προς το `games` (πριν, ήταν nullable χωρίς foreign key): οι παίκτες χωρίς προγραμματισμένο αγώνα δεν καταγράφονται, γιατί δεν υπάρχει αγώνας με τον οποίο να συγκριθεί η πρόβλεψη.
 
 Indexes: `player_games(player_id)`, `player_games(team_code, season)`, `player_games(opp_code, season)`, `games(game_date)`, `games(played, game_date)`, `games(home_code)`, `games(away_code)`, `predictions(player_id)`.
+
+**Αλλαγή τύπων στη Φάση 5:** οι στήλες κειμένου είναι `Text` (πριν `String`) και οι δεκαδικές `Double` (πριν `Float`). Οι υπάρχουσες βάσεις SQLite με `VARCHAR`/`FLOAT` είναι συμβατές. Ο κενός πίνακας `predictions` της παλιάς διάταξης (χωρίς `as_of`) αντικαθίσταται αυτόματα στην πρώτη εκτέλεση του pipeline (`ensure_schema`)· αν είχε γραμμές, το pipeline σταματά με σαφές μήνυμα και δεν αγγίζει τίποτα. Η μεταφορά στο Postgres και τα migrations περιγράφονται στο `docs/DATABASE.md`.
 
 Ο πίνακας `games` περιέχει και τους μελλοντικούς αγώνες του schedule (`played = false`, χωρίς σκορ και νικητή), ώστε το API να βρίσκει τον επόμενο αγώνα μιας ομάδας.
 
@@ -159,7 +165,7 @@ Indexes: `player_games(player_id)`, `player_games(team_code, season)`, `player_g
 | `players` | 1.212 (1.140 με τουλάχιστον μία συμμετοχή, 83 με παλαιά μορφή ID) |
 | `games` | 3.511: 3.079 παιγμένοι και 432 μη παιγμένοι (350 μελλοντικοί του 2026, 54 του 2019 που δεν διεξήχθησαν λόγω COVID και 28 του 2021) |
 | `player_games` | 73.171 γραμμές: 66.408 συμμετοχές και 6.763 γραμμές DNP (9,24%) |
-| `predictions` | 0 (γράφεται από τις Φάσεις 4–5) |
+| `predictions` | 0 (γράφεται από το `record_predictions` της Φάσης 5) |
 
 **Ανά σεζόν** (έξοδος του `verify`):
 
@@ -208,7 +214,7 @@ Indexes: `player_games(player_id)`, `player_games(team_code, season)`, `player_g
 - Το schedule και τα results του 2026 στο cache είναι της ημέρας του τρεξίματος. Για νεότερα αποτελέσματα και αλλαγές ωραρίου τρέχει το `--update`.
 - Η ερμηνεία των τριών παικτών του 2022/313 με κενό `Minutes` (0:00 με ένα φάουλ) δεν έχει επιβεβαιωθεί από δεύτερη πηγή. Στο dataset μετρούν ως παίκτες που αγωνίστηκαν με `minutes = 0` και PIR −1, όπως τους δίνει το API (`Valuation`).
 - Τα 11 ελλιπή boxscore (`team_minutes_mismatch`) δεν διορθώνονται. Οι γραμμές των παικτών που υπάρχουν είναι σωστές και ταυτίζονται με την `Valuation`, αλλά τα στατιστικά της ομάδας σε αυτούς τους αγώνες είναι ελλιπή, και αυτό επηρεάζει ελαφρά τον υπολογισμό του «opponent defensive rating» της Φάσης 3.
-- Το `data/` δεν γίνεται commit. Όποιος κλωνοποιεί το repo ξαναδημιουργεί τη βάση με την εντολή της ενότητας 2 (περίπου 1,5 ώρα την πρώτη φορά, και μετά 14 δευτερόλεπτα από το cache). Στην παραγωγή τη θέση της τοπικής βάσης παίρνει η Supabase (Φάση 5).
+- Το `data/` δεν γίνεται commit. Όποιος κλωνοποιεί το repo ξαναδημιουργεί τη βάση με την εντολή της ενότητας 2 (περίπου 1,5 ώρα την πρώτη φορά, και μετά 14 δευτερόλεπτα από το cache). Στην παραγωγή τη θέση της τοπικής βάσης παίρνει το Supabase Postgres (Φάση 5): το ίδιο ingestion γράφει εκεί με το `DATABASE_URL`, και τα δεδομένα της τοπικής βάσης μεταφέρονται με `python -m elfantasy.db.transfer` (`docs/DATABASE.md`). Το ingestion δοκιμάστηκε σε πραγματικό τοπικό Postgres (`--no-fetch`, upsert πάνω στα μεταφερμένα δεδομένα, 10 s, ίδια πλήθη και ίδια αναφορά `verify`)· **δεν δοκιμάστηκε στο ίδιο το Supabase**.
 
 ## 8. Tests
 
@@ -220,6 +226,8 @@ Indexes: `player_games(player_id)`, `player_games(team_code, season)`, `player_g
 | `tests/unit/test_clean.py` | Parsing λεπτών, ημερομηνιών (και με ελληνικό locale) και ωρών CET/CEST, αγώνες, `won`/`home`/`opp`, canonical ονόματα, ανωμαλίες, κάθε έλεγχος ποιότητας |
 | `tests/unit/test_fetch.py` | Περιορισμός ρυθμού με ψεύτικο ρολόι, 429 με `Retry-After`, backoff, κενό σώμα, συνέχιση από cache, λίστα missing, root logger, και πραγματικός κώδικας του πακέτου με προσομοίωση HTTP |
 | `tests/unit/test_db.py`, `test_config.py`, `test_pipeline_helpers.py` | Σχήμα, indexes, foreign keys, upsert (και μορφή SQL για Postgres), ρυθμίσεις, βοηθητικά του pipeline |
+| `tests/unit/test_pipeline_database.py` | Φάση 5: διαδρομή βάσης του pipeline (δημιουργία σχήματος μόνο σε SQLite, καμία δημιουργία σε Postgres, ορίσματα στο log χωρίς κωδικό) |
+| `tests/unit/test_db_*.py`, `tests/integration/test_postgres.py` | Φάση 5: URL και κωδικοί, engine, migrations, μεταφορά δεδομένων, και τα ίδια σε πραγματικό τοπικό Postgres (`docs/DATABASE.md`, ενότητα 9) |
 | `tests/integration/test_pipeline.py` | Ολόκληρη η ροή από cache και από προσομοιωμένη πηγή σε SQLite: πλήθη, `fantasy_score`, μελλοντικοί αγώνες, idempotency, εκτελέσεις υποσυνόλου, CLI και `verify` |
 
 Τα fixtures στο `tests/fixtures/` είναι πραγματικά δεδομένα χωρίς καμία αλλαγή τιμών, από τον τοπικό φάκελο `data/probe/` της Φάσης 1 και από μία κλήση στο `Schedule.get_schedule` για τις σεζόν 2016, 2023 και 2024: 7 αγώνες (195 γραμμές boxscore) των σεζόν 2016, 2023, 2024, 2025 και 2026, με τα αντίστοιχα results και schedule, και 3 μελλοντικούς αγώνες του 2026. Περιέχουν DNP, αρνητικό PIR, παλαιά IDs (`PLRU`), παίκτες με αλλαγμένο όνομα (Vezenkov, DeJulius) και το ίδιο όνομα με δύο IDs (Simonovic).

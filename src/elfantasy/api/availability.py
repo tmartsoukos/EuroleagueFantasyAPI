@@ -26,7 +26,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import Engine, delete, select
 
 from elfantasy.db.models import player_availability, players
-from elfantasy.db.session import upsert
+from elfantasy.db.session import ensure_schema, upsert
 
 
 class AvailabilityStatus(enum.StrEnum):
@@ -120,8 +120,15 @@ def to_utc(moment: datetime) -> datetime:
 
 
 def ensure_table(engine: Engine) -> None:
-    """Δημιουργεί τον πίνακα `player_availability` αν λείπει (checkfirst). Ασφαλές να ξανατρέξει."""
-    player_availability.create(engine, checkfirst=True)
+    """Σιγουρεύει ότι υπάρχει ο πίνακας `player_availability`. Ασφαλές να ξανατρέξει.
+
+    SQLite: δημιουργεί τον πίνακα αν λείπει (checkfirst). Postgres: ΔΕΝ τον δημιουργεί ποτέ,
+    γιατί δημιουργείται από τα migrations (με Row Level Security): αν λείπει σηκώνει
+    `SchemaNotInitialisedError` και η εφαρμογή ξεκινά σε degraded κατάσταση. Έτσι ο ρόλος της
+    εφαρμογής δεν χρειάζεται δικαίωμα CREATE (ο έλεγχος διαβάζει μόνο τους καταλόγους του
+    συστήματος) και δεν μπορεί να δημιουργηθεί κατά λάθος πίνακας χωρίς RLS.
+    """
+    ensure_schema(engine, [player_availability])
 
 
 def _query():

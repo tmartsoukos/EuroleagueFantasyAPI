@@ -10,6 +10,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from elfantasy.db.urls import safe_url
+
 # Προεπιλεγμένο όριο MAE (σε μονάδες fantasy score) του quality gate (docs/MODEL.md, ενότητα 8).
 # Το honest test MAE του committed μοντέλου στη σεζόν 2025 είναι 5,909 και το καλύτερο naive
 # baseline (μέσος όρος σεζόν του παίκτη) έχει 6,148. Το 6,00 αφήνει περιθώριο 1,5% πάνω από το
@@ -33,7 +35,8 @@ class Settings(BaseSettings):
         protected_namespaces=(),
     )
 
-    # Σύνδεση στη βάση: SQLite τοπικά, Postgres (Supabase) στη Φάση 5.
+    # Σύνδεση στη βάση: SQLite τοπικά, Postgres (Supabase, session pooler) στην παραγωγή
+    # (docs/DATABASE.md). Περιέχει τον κωδικό της βάσης: δεν γράφεται ποτέ σε log ή σε αρχείο.
     database_url: str = "sqlite:///data/elfantasy.db"
     # Διαδρομή του αποθηκευμένου μοντέλου (Φάσεις 3 και 4), σχετική με τον φάκελο εργασίας.
     model_path: str = "models/model.joblib"
@@ -45,6 +48,16 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     # Φάκελος δεδομένων: raw cache, αναφορές και logs.
     data_dir: str = "data"
+
+    def __repr_args__(self):
+        """Η αναπαράσταση (`repr`, `str`) κρύβει τον κωδικό της βάσης και το κλειδί διαχειριστή:
+        οι ρυθμίσεις μπορεί να τυπωθούν κατά λάθος σε log ή σε μήνυμα σφάλματος."""
+        for name, value in super().__repr_args__():
+            if name == "database_url" and isinstance(value, str):
+                value = safe_url(value)
+            elif name == "admin_api_key" and value:
+                value = "***"
+            yield name, value
 
     @property
     def raw_dir(self) -> Path:

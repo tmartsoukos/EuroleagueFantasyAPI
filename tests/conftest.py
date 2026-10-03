@@ -12,18 +12,30 @@
 - 2026/31, 32, 33: μελλοντικοί αγώνες (`played = false` στο schedule).
 """
 
+import os
+from collections.abc import Iterator
 from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
 import pytest
 from api_support import REAL_TODAY, FakeClock, make_settings, noon_utc
-from sqlalchemy import delete
+from pg_support import (
+    PostgresServer,
+    create_database,
+    drop_database,
+    is_local_url,
+    require_postgres,
+)
+from sqlalchemy import Engine, delete
+from sqlalchemy.exc import SQLAlchemyError
 from synthetic_league import League, make_league, write_to_database
 
 from elfantasy.config import get_settings
 from elfantasy.db import models
+from elfantasy.db.migrate import Migrator
 from elfantasy.db.session import get_engine
+from elfantasy.db.urls import normalize_database_url
 from elfantasy.features.build import FEATURE_COLUMNS, build_features
 from elfantasy.ingest import clean, pipeline
 from elfantasy.ingest.fetch import RawCache
@@ -43,6 +55,22 @@ def isolated_settings(tmp_path_factory, monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def restore_logging():
+    """Το `pipeline.main()` ρυθμίζει τον root logger: τον επαναφέρουμε και κλείνουμε τα νέα
+    handlers (αλλιώς ένα handler πάνω σε stdout που έκλεισε το pytest θα έβγαζε σφάλματα)."""
+    import logging
+
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    yield
+    for handler in list(root.handlers):
+        if handler not in handlers:
+            root.removeHandler(handler)
+            handler.close()
+    root.setLevel(level)
 
 
 def read_raw_boxscores() -> pd.DataFrame:
@@ -257,3 +285,127 @@ def real_client(fixture_database_url: str, tiny_xgb_bundle: ModelBundle):
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     engine.dispose()
+
+
+# --------------------------------------------------------------------------------------
+# Φάση 5: εγγράψιμη βάση SQLite με το συνθετικό πρωτάθλημα (καταγραφή προβλέψεων)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def league_template(tmp_path_factory, synthetic_league: League) -> Path:
+    """Αρχείο SQLite με το συνθετικό πρωτάθλημα (πρότυπο): κάθε test παίρνει δικό του αντίγραφο."""
+    path = tmp_path_factory.mktemp("league_template") / "league.db"
+    engine = get_engine(f"sqlite:///{path.as_posix()}")
+    write_to_database(engine, synthetic_league)
+    engine.dispose()
+    return path
+
+
+@pytest.fixture
+def league_db(league_template: Path, tmp_path: Path) -> Iterator[Engine]:
+    """Φρέσκο ΕΓΓΡΑΨΙΜΟ αντίγραφο της βάσης του συνθετικού πρωταθλήματος (χωρίς predictions)."""
+    import shutil
+
+    copy = tmp_path / "league_copy.db"
+    shutil.copyfile(league_template, copy)
+    engine = get_engine(f"sqlite:///{copy.as_posix()}")
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def league_predictor(league_db: Engine, tiny_xgb_bundle: ModelBundle, api_today: date) -> Predictor:
+    """Predictor με το μικρό μοντέλο πάνω στο `league_db`, με σταθερή ημέρα `api_today`."""
+    return Predictor(tiny_xgb_bundle, league_db, today=lambda: api_today)
+
+
+# --------------------------------------------------------------------------------------
+# Φάση 5: πραγματικό Postgres (ΜΟΝΟ τοπικό: TEST_DATABASE_URL ή ενσωματωμένος pgserver)
+# --------------------------------------------------------------------------------------
+
+
+def _postgres_unavailable(reason: str):
+    if require_postgres():
+        pytest.fail(
+            f"PostgreSQL is required (ELFANTASY_REQUIRE_POSTGRES) but unavailable: {reason}"
+        )
+    pytest.skip(reason)
+
+
+@pytest.fixture(scope="session")
+def postgres_server(tmp_path_factory) -> Iterator[PostgresServer]:
+    """Ένας τοπικός server Postgres για τα tests που τον χρειάζονται (βλ. `tests/pg_support.py`).
+
+    Παραλείπει τα tests αν δεν υπάρχει (ούτε `TEST_DATABASE_URL` ούτε `pixeltable-pgserver`) ή αν
+    το `TEST_DATABASE_URL` δεν δείχνει σε τοπικό server: ποτέ remote βάση.
+    """
+    configured = os.environ.get("TEST_DATABASE_URL", "").strip()
+    if configured:
+        if not is_local_url(configured):
+            _postgres_unavailable(
+                "TEST_DATABASE_URL does not point to a local server: the tests never connect "
+                "to remote databases"
+            )
+        yield PostgresServer(normalize_database_url(configured), embedded=False)
+        return
+    try:
+        import pixeltable_pgserver
+    except ImportError:
+        _postgres_unavailable(
+            "no PostgreSQL available: set TEST_DATABASE_URL (local server) or install "
+            "pixeltable-pgserver (requirements-dev.txt)"
+        )
+    try:
+        server = pixeltable_pgserver.get_server(
+            tmp_path_factory.mktemp("pgdata"), cleanup_mode="stop"
+        )
+    except Exception as exc:
+        _postgres_unavailable(f"the embedded PostgreSQL could not start ({type(exc).__name__})")
+    try:
+        yield PostgresServer(normalize_database_url(server.get_uri()), embedded=True)
+    finally:
+        server.cleanup()
+
+
+@pytest.fixture
+def pg_url(postgres_server: PostgresServer) -> Iterator[str]:
+    """Το URL μιας ΚΕΝΗΣ βάσης στον τοπικό server, που διαγράφεται στο τέλος του test."""
+    try:
+        url = create_database(postgres_server)
+    except SQLAlchemyError as exc:
+        pytest.skip(f"cannot create a test database on the local server ({type(exc).__name__})")
+    try:
+        yield url
+    finally:
+        drop_database(postgres_server, url)
+
+
+@pytest.fixture
+def pg_engine(pg_url: str) -> Iterator[Engine]:
+    """Engine (με τις ρυθμίσεις του project για Postgres) προς την κενή βάση `pg_url`."""
+    engine = get_engine(pg_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def pg_migrated(pg_engine: Engine) -> Engine:
+    """Η κενή βάση μετά την εφαρμογή όλων των migrations (όπως θα γίνει στο Supabase)."""
+    Migrator(pg_engine).apply()
+    return pg_engine
+
+
+@pytest.fixture(scope="session")
+def pg_league_url(postgres_server: PostgresServer, synthetic_league: League) -> Iterator[str]:
+    """Βάση Postgres με τα migrations και το συνθετικό πρωτάθλημα (μόνο για ανάγνωση)."""
+    url = create_database(postgres_server, "elfantasy_league")
+    engine = get_engine(url)
+    try:
+        Migrator(engine).apply()
+        write_to_database(engine, synthetic_league)
+        engine.dispose()
+        yield url
+    finally:
+        engine.dispose()
+        drop_database(postgres_server, url)

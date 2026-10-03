@@ -97,6 +97,7 @@ class TestSchema:
             "predicted_fantasy",
             "predicted_pir",
             "model_version",
+            "as_of",
             "created_at",
         ]
 
@@ -132,6 +133,13 @@ class TestSchema:
         assert ("player_games", "players", ("player_id",)) in referred
         assert ("player_games", "games", ("season", "gamecode")) in referred
         assert ("predictions", "players", ("player_id",)) in referred
+        assert ("predictions", "games", ("season", "gamecode")) in referred
+
+    def test_predictions_have_a_unique_natural_key(self, engine):
+        uniques = inspect(engine).get_unique_constraints("predictions")
+        assert [u["column_names"] for u in uniques] == [
+            ["player_id", "season", "gamecode", "model_version", "as_of"]
+        ]
 
     def test_create_all_is_safe_to_repeat(self, engine):
         create_all(engine)
@@ -151,26 +159,76 @@ class TestSchema:
                 )
             )
 
+    @staticmethod
+    def _insert_player_and_game(conn):
+        for code, name in (("IST", "ANADOLU EFES ISTANBUL"), ("TEL", "MACCABI TEL AVIV")):
+            conn.execute(models.teams.insert().values(team_code=code, name=name))
+        conn.execute(
+            models.players.insert().values(
+                player_id="P007200", name="LARKIN, SHANE", first_season=2025, last_season=2025
+            )
+        )
+        conn.execute(
+            models.games.insert().values(
+                season=2026,
+                gamecode=31,
+                game_date=date(2026, 10, 7),
+                home_code="IST",
+                away_code="TEL",
+                played=False,
+            )
+        )
+
     def test_predictions_get_an_id_and_a_timestamp(self, engine):
         with engine.begin() as conn:
-            conn.execute(
-                models.teams.insert().values(team_code="IST", name="ANADOLU EFES ISTANBUL")
-            )
-            conn.execute(
-                models.players.insert().values(
-                    player_id="P007200", name="LARKIN, SHANE", first_season=2025, last_season=2025
-                )
-            )
-            for _ in range(2):
+            self._insert_player_and_game(conn)
+            for day in (date(2026, 10, 5), date(2026, 10, 6)):
                 conn.execute(
                     models.predictions.insert().values(
-                        player_id="P007200", predicted_fantasy=21.5, model_version="test"
+                        player_id="P007200",
+                        season=2026,
+                        gamecode=31,
+                        predicted_fantasy=21.5,
+                        model_version="test",
+                        as_of=day,
                     )
                 )
             rows = conn.execute(select(models.predictions)).mappings().all()
         assert [row["id"] for row in rows] == [1, 2]
         assert all(isinstance(row["created_at"], datetime) for row in rows)
-        assert rows[0]["season"] is None and rows[0]["gamecode"] is None
+        assert [row["as_of"] for row in rows] == [date(2026, 10, 5), date(2026, 10, 6)]
+        assert rows[0]["predicted_pir"] is None
+
+    def test_a_prediction_needs_an_existing_game_and_a_day(self, engine):
+        base = {"player_id": "P007200", "predicted_fantasy": 1.0, "model_version": "test"}
+        with engine.begin() as conn:
+            self._insert_player_and_game(conn)
+        for values in (
+            {"season": 2026, "gamecode": 31},  # λείπει το as_of
+            {"as_of": date(2026, 10, 6)},  # λείπει ο αγώνας
+            {"season": 2026, "gamecode": 999, "as_of": date(2026, 10, 6)},  # άγνωστος αγώνας
+        ):
+            with pytest.raises(IntegrityError), engine.begin() as conn:
+                conn.execute(models.predictions.insert().values(**base, **values))
+
+    def test_the_same_prediction_cannot_be_stored_twice_for_one_day(self, engine):
+        row = {
+            "player_id": "P007200",
+            "season": 2026,
+            "gamecode": 31,
+            "predicted_fantasy": 21.5,
+            "model_version": "test",
+            "as_of": date(2026, 10, 6),
+        }
+        with engine.begin() as conn:
+            self._insert_player_and_game(conn)
+            conn.execute(models.predictions.insert().values(**row))
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(models.predictions.insert().values(**row))
+        with engine.begin() as conn:  # άλλη έκδοση μοντέλου ή άλλη ημέρα: επιτρέπεται
+            conn.execute(models.predictions.insert().values(**{**row, "model_version": "test2"}))
+            conn.execute(models.predictions.insert().values(**{**row, "as_of": date(2026, 10, 7)}))
+            assert count(conn, models.predictions) == 3
 
     def test_schema_compiles_for_postgres(self):
         """Το ίδιο σχήμα πρέπει να δουλεύει στο Supabase (Φάση 5): έλεγχος του DDL για Postgres."""
@@ -187,7 +245,11 @@ class TestSchema:
             "FOREIGN KEY(season, gamecode) REFERENCES games (season, gamecode)"
             in ddl["player_games"]
         )
-        assert "fantasy_score FLOAT NOT NULL" in ddl["player_games"]
+        assert "fantasy_score DOUBLE PRECISION NOT NULL" in ddl["player_games"]
+        assert "minutes DOUBLE PRECISION NOT NULL" in ddl["player_games"]
+        assert "player_id TEXT NOT NULL" in ddl["player_games"]
+        assert "as_of DATE NOT NULL" in ddl["predictions"]
+        assert "UNIQUE (player_id, season, gamecode, model_version, as_of)" in ddl["predictions"]
         indexes = [
             str(CreateIndex(index).compile(dialect=dialect))
             for table in models.metadata.sorted_tables

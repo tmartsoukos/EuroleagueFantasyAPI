@@ -292,8 +292,8 @@ class TestSchema:
 
     def test_the_schema_compiles_for_postgres(self):
         ddl = str(CreateTable(models.player_availability).compile(dialect=postgresql.dialect()))
-        assert "player_id VARCHAR NOT NULL" in ddl
-        assert "status VARCHAR NOT NULL" in ddl
+        assert "player_id TEXT NOT NULL" in ddl
+        assert "status TEXT NOT NULL" in ddl
         assert "expected_return DATE" in ddl
         assert "updated_at TIMESTAMP WITH TIME ZONE NOT NULL" in ddl
         assert "CONSTRAINT pk_player_availability PRIMARY KEY (player_id)" in ddl

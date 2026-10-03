@@ -30,7 +30,14 @@ from sqlalchemy import Engine, case, func, select
 from elfantasy import scoring
 from elfantasy.config import get_settings
 from elfantasy.db import models
-from elfantasy.db.session import create_all, get_engine, upsert
+from elfantasy.db.session import (
+    LegacySchemaError,
+    SchemaNotInitialisedError,
+    ensure_schema,
+    get_engine,
+    upsert,
+)
+from elfantasy.db.urls import safe_url
 from elfantasy.ingest import clean
 from elfantasy.ingest.fetch import (
     DEFAULT_RPS,
@@ -309,7 +316,7 @@ def run_pipeline(
 
     engine = get_engine(db_url)
     try:
-        create_all(engine)
+        ensure_schema(engine)
         result.rows_sent = load_to_db(engine, data, player_games)
         result.table_counts = table_counts(engine)
     finally:
@@ -416,7 +423,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     data_dir = Path(args.data_dir or settings.data_dir)
     log_path = configure_logging(data_dir / "logs", args.log_level)
-    logger.info("Starting ingestion: seasons %s, arguments %s", seasons, vars(args))
+    shown = {**vars(args), "db": safe_url(args.db) if args.db else None}  # χωρίς κωδικό
+    logger.info("Starting ingestion: seasons %s, arguments %s", seasons, shown)
+    logger.info("Database: %s", safe_url(args.db or settings.database_url))
     allow = [name.strip() for name in args.allow_quality_issues.split(",") if name.strip()]
     try:
         result = run_pipeline(
@@ -430,6 +439,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             checkpoint_every=args.checkpoint_every,
         )
     except (FetchError, clean.DataQualityError) as exc:
+        logger.error("Ingestion failed: %s", exc)
+        return 1
+    except (SchemaNotInitialisedError, LegacySchemaError) as exc:
+        # Στο Postgres το σχήμα δημιουργείται μόνο από τα migrations (docs/DATABASE.md).
         logger.error("Ingestion failed: %s", exc)
         return 1
     except Exception:

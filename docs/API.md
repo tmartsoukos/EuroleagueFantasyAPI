@@ -31,7 +31,7 @@
 | `src/elfantasy/api/deps.py` | Dependencies: κατάσταση, `X-API-Key`, κανονικοποίηση `player_id` |
 | `src/elfantasy/api/responses.py` | Κοινή τεκμηρίωση των απαντήσεων σφάλματος στο OpenAPI |
 | `src/elfantasy/api/routers/` | Λεπτοί routers: `health`, `predict` (και `/rankings`), `players`, `availability`, `admin` |
-| `src/elfantasy/db/models.py` | Νέος πίνακας `player_availability` (ενότητα 7) |
+| `src/elfantasy/db/models.py` | Νέος πίνακας `player_availability` (ενότητα 7)· σχήμα, migrations και Postgres: `docs/DATABASE.md` |
 
 ## 2. Πώς τρέχει
 
@@ -68,7 +68,7 @@ uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT
 
 | Μεταβλητή | Προεπιλογή | Σημασία στο API |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///data/elfantasy.db` | Βάση ιστορικού, προγράμματος και διαθεσιμότητας. Τα URL `postgresql://…` μετατρέπονται σε `postgresql+psycopg://…`. Ένα αρχείο SQLite που δεν υπάρχει **δεν δημιουργείται**: η υπηρεσία γίνεται degraded |
+| `DATABASE_URL` | `sqlite:///data/elfantasy.db` | Βάση ιστορικού, προγράμματος και διαθεσιμότητας. Στην παραγωγή το Supabase Postgres μέσω του session pooler (`postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require`, βλ. `docs/DATABASE.md`)· τα URL `postgresql://…` μετατρέπονται σε `postgresql+psycopg://…`. Ένα αρχείο SQLite που δεν υπάρχει **δεν δημιουργείται**: η υπηρεσία γίνεται degraded. Σε Postgres το API **δεν δημιουργεί ποτέ πίνακες** (τους δημιουργούν τα migrations)· ο κωδικός δεν εμφανίζεται ποτέ σε logs ή μηνύματα |
 | `MODEL_PATH` | `models/model.joblib` | Το αποθηκευμένο μοντέλο. Αν λείπει ή είναι ασύμβατο, η υπηρεσία γίνεται degraded |
 | `ADMIN_API_KEY` | κενό | Κλειδί για τα προστατευμένα endpoints (ενότητα 8). **Κενό = τα endpoints είναι κλειστά** |
 | `MAE_THRESHOLD` | `6.00` | Δεν χρησιμοποιείται από το API (μόνο από την εκπαίδευση και το quality gate). Το `/health` δείχνει το threshold που καταγράφηκε στο `metrics.json` |
@@ -415,7 +415,7 @@ curl -s -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:8000/admin/refre
 
 **Τι δεν καλύπτει.** Το override αφορά μόνο τον ίδιο τον παίκτη. Δεν αναπροσαρμόζει τα λεπτά και τη χρήση των συμπαικτών όταν ένας βασικός απουσιάζει και δεν μεταβάλλει το πλαίσιο της ομάδας. Οι εγγραφές είναι χειροκίνητες και **δεν λήγουν μόνες τους**: μετά την `expected_return` το `/predict` προσθέτει προειδοποίηση, αλλά ο παίκτης παραμένει `out` μέχρι να αλλάξει ή να αφαιρεθεί η εγγραφή.
 
-**Σχήμα του πίνακα** (και στο `docs/INGESTION.md`, ενότητα 5): `player_id` (primary key, FK → `players`), `status` (`CHECK status IN ('out', 'doubtful', 'available')`, όνομα constraint `ck_player_availability_status`), `source`, `note`, `expected_return` (`DATE`), `updated_at` (`TIMESTAMP WITH TIME ZONE`, not null). Χρησιμοποιούνται μόνο γενικοί τύποι της SQLAlchemy, άρα το σχήμα δουλεύει αυτούσιο σε SQLite και Postgres (το DDL για Postgres ελέγχεται σε test), και η εγγραφή γίνεται με το υπάρχον `upsert()` του `db/session.py`. Ο πίνακας δημιουργείται στο startup της εφαρμογής αν λείπει (`checkfirst`), και επίσης από το `create_all` του ingestion.
+**Σχήμα του πίνακα** (και στο `docs/INGESTION.md`, ενότητα 5): `player_id` (primary key, FK → `players`), `status` (`CHECK status IN ('out', 'doubtful', 'available')`, όνομα constraint `ck_player_availability_status`), `source`, `note`, `expected_return` (`DATE`), `updated_at` (`TIMESTAMP WITH TIME ZONE`, not null). Χρησιμοποιούνται μόνο γενικοί τύποι της SQLAlchemy, άρα το σχήμα δουλεύει αυτούσιο σε SQLite και Postgres (στο Postgres: `text`, `date`, `timestamptz`· το σχήμα ελέγχεται και σε πραγματικό Postgres, `docs/DATABASE.md`), και η εγγραφή γίνεται με το υπάρχον `upsert()` του `db/session.py`. **Στην SQLite** ο πίνακας δημιουργείται στο startup της εφαρμογής αν λείπει (`checkfirst`), και επίσης από το `create_all` του ingestion. **Στο Postgres** δημιουργείται από το migration `001_init.sql` (με Row Level Security από το `002`)· το startup ελέγχει μόνο ότι υπάρχει και δεν τον δημιουργεί ποτέ, ούτε χρειάζεται δικαίωμα `CREATE`. Το `updated_at` είναι `timestamptz`: γράφεται και διαβάζεται πάντα ως UTC ανεξάρτητα από τη ζώνη ώρας της συνεδρίας του server.
 
 ## 8. Ασφάλεια
 
@@ -428,12 +428,12 @@ curl -s -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:8000/admin/refre
 
 ## 9. Εκκίνηση, degraded κατάσταση και συμπεριφορά σε αποτυχίες
 
-Η φόρτωση γίνεται στο lifespan της εφαρμογής: ανοίγει η κοινή engine, δημιουργείται (αν λείπει) ο πίνακας `player_availability`, φορτώνεται το μοντέλο, και υπολογίζονται εκ των προτέρων οι προβλέψεις της ημέρας (**warm-up**), ώστε το πρώτο αίτημα να μην πληρώσει τον υπολογισμό και ένα πρόβλημα να φανεί από την αρχή. Κάθε αποτυχία καταγράφεται στο log και γίνεται **degraded**, χωρίς να σταματά η εφαρμογή:
+Η φόρτωση γίνεται στο lifespan της εφαρμογής: ανοίγει η κοινή engine, δημιουργείται (αν λείπει, **μόνο στην SQLite**) ή ελέγχεται (στο Postgres) ο πίνακας `player_availability`, φορτώνεται το μοντέλο, και υπολογίζονται εκ των προτέρων οι προβλέψεις της ημέρας (**warm-up**), ώστε το πρώτο αίτημα να μην πληρώσει τον υπολογισμό και ένα πρόβλημα να φανεί από την αρχή. Κάθε αποτυχία καταγράφεται στο log και γίνεται **degraded**, χωρίς να σταματά η εφαρμογή:
 
 | Αποτυχία | `/health` | `/predict`, `/rankings`, `/players` | `/availability` |
 |---|---|---|---|
 | Λείπει, είναι κατεστραμμένο ή ασύμβατο το μοντέλο | 503, `model: null` | 503 `prediction model is not available` | δουλεύει |
-| Η βάση δεν φτάνει ή δεν έχει αρχικοποιηθεί | 503, `database.ok: false` | 503 `database is not available` | 503 |
+| Η βάση δεν φτάνει ή δεν έχει αρχικοποιηθεί (στο Postgres: λείπουν πίνακες επειδή δεν εφαρμόστηκαν τα migrations) | 503, `database.ok: false` | 503 `database is not available` | 503 |
 | Αποτυγχάνει ο πρώτος υπολογισμός προβλέψεων | 503, πρόβλημα `model` | 503 `prediction model is not available` | δουλεύει |
 | Η βάση δεν έχει παίκτες | 503, `database.ok: false` | δουλεύουν (κενά αποτελέσματα στα `/rankings` και `/players`, 404 στο `/predict`) | δουλεύει |
 
@@ -497,13 +497,15 @@ curl -s https://<host>/health
 | `tests/integration/test_api_admin.py` | Προστασία και ανανέωση: νέος αγώνας και αλλαγή ονόματος ομάδας γίνονται ορατά μόνο μετά το refresh, αναφορά του cutoff |
 | `tests/integration/test_api_openapi.py` | `/openapi.json`, `/docs`, security scheme, τεκμηριωμένοι κωδικοί, παραδείγματα έγκυρα ως προς τα μοντέλα, κανένα μυστικό στο schema |
 | `tests/integration/test_api_errors.py` | Generic 500 και 503 χωρίς stack trace (η λεπτομέρεια μένει στο log), μορφή `detail` |
-| `tests/unit/test_api_availability.py`, `test_api_services.py`, `test_api_state.py`, `test_api_deps.py` | Λογική override, αποθήκευση, constraints, ταυτόχρονα upserts, κανονικοποίηση αναζήτησης, σημειώσεις, startup/shutdown και ταξινόμηση αποτυχιών, έλεγχος κλειδιού και επικύρωση εισόδου, χωρίς HTTP |
+| `tests/integration/test_api_predictions_table.py` | Κανένα endpoint δεν γράφει στον πίνακα `predictions` (τα GET δεν έχουν παρενέργειες) |
+| `tests/integration/test_postgres.py` (marker `postgres`) | Το API, ο `Predictor` και η διαθεσιμότητα (`timestamptz`) σε πραγματικό τοπικό Postgres, με αποτελέσματα ίδια με της SQLite· startup χωρίς migrations: degraded και κανένας πίνακας δεν δημιουργείται |
+| `tests/unit/test_api_availability.py`, `test_api_services.py`, `test_api_state.py`, `test_api_deps.py` | Λογική override, αποθήκευση, constraints, ταυτόχρονα upserts, κανονικοποίηση αναζήτησης, σημειώσεις, startup/shutdown και ταξινόμηση αποτυχιών (και startup σε Postgres με ψεύτικο engine: έλεγχος χωρίς δημιουργία πίνακα), έλεγχος κλειδιού και επικύρωση εισόδου, χωρίς HTTP |
 
 Τα νούμερα (αριθμός tests, coverage) αναφέρονται στο report της φάσης. Σημείωση για το `pyproject.toml`: το Starlette 1.7 θεωρεί παρωχημένο το `httpx` στο `TestClient` και προτείνει το `httpx2`· η συγκεκριμένη προειδοποίηση αγνοείται με `filterwarnings`, ώστε να μη θάβει άλλες. Αν στο μέλλον το Starlette αφαιρέσει την υποστήριξη του `httpx`, αρκεί να αντικατασταθεί το `httpx` με το `httpx2` στο `requirements-dev.txt`.
 
 ## 13. Περιορισμοί και ό,τι δεν επιβεβαιώθηκε
 
-- **Δεν δοκιμάστηκε σε Postgres.** Το σχήμα του `player_availability` και το `INSERT … ON CONFLICT DO UPDATE` μεταγλωττίζονται για Postgres σε test, αλλά κανένα query δεν έτρεξε σε πραγματικό Postgres (Supabase, Φάση 5). Με το pooler του Supabase σε λειτουργία transaction το `psycopg` 3 μπορεί να χρειαστεί `prepare_threshold=None` στα connect args του `get_engine` (δεν ελέγχθηκε).
+- **Postgres (Φάση 5).** Το API δοκιμάστηκε σε **πραγματικό τοπικό Postgres** (PostgreSQL 18.4, `uvicorn` και `curl`: `/health`, `/rankings`, `/predict`, `POST`/`GET`/`DELETE /availability`, `POST /admin/refresh`, και τα ίδια πάνω σε `TestClient` στα tests με marker `postgres`)· οι προβλέψεις είναι ίδιες με της SQLite (μέγιστη διαφορά 0,0). **Δεν δοκιμάστηκε στο ίδιο το Supabase**: pooler, SSL, IPv4/IPv6, καθυστέρηση δικτύου (κάθε αίτημα `/predict` και `/rankings` διαβάζει τον πίνακα διαθεσιμότητας, δηλαδή ένα ταξίδι δικτύου προς τη βάση) και παύση του free tier. Για τον transaction pooler (πόρτα 6543) το `get_engine` ορίζει αυτόματα `prepare_threshold=None` (δοκιμάστηκε μόνο τοπικά, χωρίς pooler). Βλ. `docs/DATABASE.md`, ενότητες 12 και 13.
 - **Δεν δοκιμάστηκε στο Render:** ούτε χρόνος εκκίνησης, ούτε μνήμη, ούτε ταχύτητα στο free tier (όλες οι μετρήσεις είναι τοπικές). Δεν έχει ελεγχθεί αν η εκκίνηση (περίπου 6 s τοπικά) χωράει στα χρονικά όρια του Render σε αργό instance.
 - **Python.** Τα tests του API περνούν σε Python 3.13.2 και 3.12.7 (με τις ίδιες εκδόσεις βιβλιοθηκών)· η 3.11 δεν δοκιμάστηκε.
 - **Ένα worker.** Ο `Predictor` και η cache του ζουν στη διεργασία· με πολλούς workers το `POST /admin/refresh` ανανεώνει μόνο έναν.
@@ -522,6 +524,6 @@ curl -s https://<host>/health
 - **Σημείωση για ξεπερασμένη εγγραφή** (`expected return date has passed …`): οι εγγραφές είναι χειροκίνητες και αλλιώς ένας παίκτης θα έμενε `out` για πάντα χωρίς καμία ένδειξη.
 - **`HEAD /health`** (εκτός OpenAPI) για monitors που χρησιμοποιούν HEAD, γιατί το FastAPI δίνει 405 στα HEAD των routes GET.
 - **Ένα αρχείο SQLite που δεν υπάρχει δεν δημιουργείται:** η SQLite θα δημιουργούσε σιωπηλά κενή βάση στην πρώτη σύνδεση και το `/health` θα έδειχνε παραπλανητικά υγιές.
-- **Ο πίνακας `player_availability` ανήκει στο κοινό `metadata`** (`db/models.py`), άρα το `create_all` του ingestion τον δημιουργεί κι αυτό (κενό). Προστέθηκε σύμβαση ονομασίας `ck` για το CHECK constraint. Στο υπάρχον `tests/unit/test_db.py` ενημερώθηκαν μόνο τα δύο σημεία που μετρούσαν τους πίνακες (5 → 6).
+- **Ο πίνακας `player_availability` ανήκει στο κοινό `metadata`** (`db/models.py`), άρα στην SQLite το `create_all` του ingestion τον δημιουργεί κι αυτό (κενό). Προστέθηκε σύμβαση ονομασίας `ck` για το CHECK constraint. Στο υπάρχον `tests/unit/test_db.py` ενημερώθηκαν μόνο τα δύο σημεία που μετρούσαν τους πίνακες (5 → 6). **Φάση 5:** στο Postgres ο πίνακας δημιουργείται μόνο από τα migrations και το startup του API δεν τον δημιουργεί ποτέ (`ensure_schema`)· το API δεν γράφει στον πίνακα `predictions` (η καταγραφή γίνεται από το `python -m elfantasy.model.record_predictions`).
 - **Φίλτρο `team`:** 3 χαρακτήρες (γράμματα ή ψηφία) αντί για αυστηρά 3 γράμματα, γιατί τα συνθετικά tests χρησιμοποιούν κωδικούς όπως `T03`· οι πραγματικοί κωδικοί είναι 3 γράμματα. Σχηματικά άκυρος κωδικός: 422, άγνωστος: 404.
 - **`features` στο `/predict`:** απουσιάζει εντελώς από την απάντηση όταν δεν ζητηθεί (και όχι `null`), και στρογγυλεύεται σε 4 δεκαδικά.

@@ -15,16 +15,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from sqlalchemy import Engine
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
 from elfantasy.api.availability import ensure_table
 from elfantasy.api.services import Clock, PredictionService, utc_now
 from elfantasy.config import Settings, get_settings
-from elfantasy.db.session import get_engine, normalize_database_url
+from elfantasy.db.session import get_engine
+from elfantasy.db.urls import sqlite_file_is_missing
 from elfantasy.model.artifact import ModelLoadError
 from elfantasy.model.predict import Predictor
 
@@ -54,24 +53,6 @@ class AppState:
     started: bool = False
     owns_engine: bool = False
     owns_predictor: bool = False
-
-
-def sqlite_file_is_missing(url: str) -> bool:
-    """True αν το URL δείχνει σε αρχείο SQLite που δεν υπάρχει.
-
-    Η SQLite θα δημιουργούσε σιωπηλά ένα κενό αρχείο στην πρώτη σύνδεση· εδώ θέλουμε αντί γι'
-    αυτό «degraded» κατάσταση και καμία παρενέργεια στον δίσκο.
-    """
-    try:
-        sa_url = make_url(normalize_database_url(url))
-    except Exception:  # άκυρο URL: θα αναφερθεί από το get_engine
-        return False
-    if sa_url.get_backend_name() != "sqlite":
-        return False
-    database = sa_url.database
-    if not database or database == ":memory:" or database.startswith("file:"):
-        return False
-    return not Path(database).is_file()
 
 
 def start(state: AppState) -> None:
@@ -105,7 +86,7 @@ def _start_database(state: AppState, settings: Settings) -> None:
     try:
         ensure_table(state.engine)
     except SQLAlchemyError:
-        logger.exception("could not reach the database or create the player_availability table")
+        logger.exception("could not reach the database or find the player_availability table")
         state.problems["database"] = PROBLEM_DATABASE
 
 

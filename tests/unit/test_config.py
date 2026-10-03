@@ -76,3 +76,22 @@ def test_get_settings_is_cached(clean_environment, monkeypatch):
 def test_no_warning_for_the_model_prefix(clean_environment, recwarn):
     Settings()
     assert not [w for w in recwarn.list if "model_" in str(w.message)]
+
+
+def test_the_representation_hides_the_database_password_and_the_admin_key(clean_environment):
+    """Οι ρυθμίσεις μπορεί να τυπωθούν κατά λάθος σε log ή σε μήνυμα σφάλματος."""
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://postgres.abc:S3cr3t-Pa55@db.example.com:5432/postgres",
+        admin_api_key="very-secret-key",
+    )
+    for text in (repr(settings), str(settings)):
+        assert "S3cr3t-Pa55" not in text and "very-secret-key" not in text
+        assert "postgres.abc:***@db.example.com" in text and "admin_api_key='***'" in text
+    assert settings.database_url.endswith("S3cr3t-Pa55@db.example.com:5432/postgres")  # η τιμή ίδια
+
+
+def test_the_representation_keeps_harmless_values_and_an_empty_key(clean_environment):
+    text = repr(Settings(_env_file=None))
+    assert "database_url='sqlite:///data/elfantasy.db'" in text
+    assert "admin_api_key=''" in text and "mae_threshold=6.0" in text

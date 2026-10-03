@@ -4,3 +4,8 @@ pytest>=9.1
 pytest-cov>=7.1
 httpx>=0.28
 ruff>=0.16
+# Ενσωματωμένος PostgreSQL (binaries μέσα στο πακέτο, ~30 MB) για τα tests των migrations, της
+# μεταφοράς δεδομένων και του API σε ΠΡΑΓΜΑΤΙΚΟ Postgres (tests/pg_support.py). Δοκιμάστηκε σε Windows 11
+# με Python 3.13 (PostgreSQL 18). Υπάρχουν wheels για Python 3.10 έως 3.14 σε Windows, Linux και macOS.
+# Χωρίς αυτό (ή χωρίς TEST_DATABASE_URL προς ΤΟΠΙΚΟ server) τα tests με το marker `postgres` παραλείπονται.
+pixeltable-pgserver>=0.6
