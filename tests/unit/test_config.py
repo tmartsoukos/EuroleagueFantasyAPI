@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from elfantasy.config import Settings, get_settings
+from elfantasy.config import DEFAULT_MAE_THRESHOLD, Settings, get_settings
 
 VARIABLES = ("DATABASE_URL", "MODEL_PATH", "MAE_THRESHOLD", "ADMIN_API_KEY", "DATA_DIR")
 
@@ -24,7 +24,7 @@ def test_defaults(clean_environment):
     settings = Settings()
     assert settings.database_url == "sqlite:///data/elfantasy.db"
     assert settings.model_path == "models/model.joblib"
-    assert settings.mae_threshold == 0.0
+    assert settings.mae_threshold == DEFAULT_MAE_THRESHOLD == 6.0
     assert settings.admin_api_key == ""
     assert settings.data_dir == "data"
 

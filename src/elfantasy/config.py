@@ -10,6 +10,13 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Προεπιλεγμένο όριο MAE (σε μονάδες fantasy score) του quality gate (docs/MODEL.md, ενότητα 8).
+# Το honest test MAE του committed μοντέλου στη σεζόν 2025 είναι 5,909 και το καλύτερο naive
+# baseline (μέσος όρος σεζόν του παίκτη) έχει 6,148. Το 6,00 αφήνει περιθώριο 1,5% πάνω από το
+# μοντέλο και απαιτεί να κερδίζεται το naive baseline τουλάχιστον κατά 2,4%. Το «×1,05» (6,21)
+# θα ήταν πάνω από το naive baseline και δεν χρησιμοποιείται.
+DEFAULT_MAE_THRESHOLD = 6.00
+
 
 class Settings(BaseSettings):
     """Ρυθμίσεις του project.
@@ -28,10 +35,12 @@ class Settings(BaseSettings):
 
     # Σύνδεση στη βάση: SQLite τοπικά, Postgres (Supabase) στη Φάση 5.
     database_url: str = "sqlite:///data/elfantasy.db"
-    # Διαδρομή του αποθηκευμένου μοντέλου (Φάσεις 3 και 4).
+    # Διαδρομή του αποθηκευμένου μοντέλου (Φάσεις 3 και 4), σχετική με τον φάκελο εργασίας.
     model_path: str = "models/model.joblib"
-    # Όριο MAE του quality gate. Το 0 σημαίνει ότι δεν έχει οριστεί ακόμη πραγματικό όριο.
-    mae_threshold: float = 0.0
+    # Όριο MAE του quality gate: το train.py αποθηκεύει μοντέλο μόνο αν το test MAE είναι
+    # μικρότερο, και το tests/quality το ελέγχει στο committed μοντέλο. Τιμή ≤ 0 σημαίνει ότι
+    # δεν έχει οριστεί όριο (η εκπαίδευση αποτυγχάνει με σαφές μήνυμα).
+    mae_threshold: float = DEFAULT_MAE_THRESHOLD
     # Κλειδί για τα προστατευμένα endpoints (header X-API-Key). Κενό = τα endpoints είναι κλειστά.
     admin_api_key: str = ""
     # Φάκελος δεδομένων: raw cache, αναφορές και logs.

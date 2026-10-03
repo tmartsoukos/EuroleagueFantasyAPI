@@ -21,7 +21,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# Το "tests" στο pythonpath επιτρέπει import των βοηθητικών modules των tests (synthetic_league,
+# feature_reference) από τα αρχεία δοκιμών και το conftest.
+pythonpath = ["src", "tests"]
 # importlib: επιτρέπει αρχεία δοκιμών με το ίδιο όνομα σε διαφορετικούς φακέλους (unit/integration).
 addopts = "-ra --import-mode=importlib"
 

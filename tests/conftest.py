@@ -16,10 +16,14 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from synthetic_league import League, make_league
 
 from elfantasy.config import get_settings
-from elfantasy.ingest import clean
+from elfantasy.features.build import FEATURE_COLUMNS, build_features
+from elfantasy.ingest import clean, pipeline
 from elfantasy.ingest.fetch import RawCache
+from elfantasy.model.artifact import ModelBundle, library_versions
+from elfantasy.model.train import DEFAULT_XGB, ModelSpec, fit_ridge, fit_xgboost_final
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -81,10 +85,7 @@ def raw_schedule() -> dict[int, pd.DataFrame]:
     return read_raw_schedule()
 
 
-@pytest.fixture
-def fixture_cache(tmp_path) -> RawCache:
-    """Cache με τα δεδομένα των fixtures, στη διάταξη του `data/raw/` (για --no-fetch)."""
-    cache = RawCache(tmp_path / "data" / "raw")
+def _populate_cache(cache: RawCache) -> RawCache:
     boxscores = read_raw_boxscores()
     for season, results in read_raw_results().items():
         cache.save_results(season, results)
@@ -95,7 +96,80 @@ def fixture_cache(tmp_path) -> RawCache:
     return cache
 
 
+@pytest.fixture
+def fixture_cache(tmp_path) -> RawCache:
+    """Cache με τα δεδομένα των fixtures, στη διάταξη του `data/raw/` (για --no-fetch)."""
+    return _populate_cache(RawCache(tmp_path / "data" / "raw"))
+
+
+@pytest.fixture(scope="session")
+def fixture_database_url(tmp_path_factory) -> str:
+    """URL βάσης SQLite που φτιάχνεται μία φορά από τα fixtures (ingestion pipeline).
+
+    Περιέχει τους 7 πραγματικούς αγώνες και τους 3 μελλοντικούς των fixtures (σεζόν 2016, 2023,
+    2024, 2025, 2026). Μόνο για ανάγνωση: κανένα test δεν πρέπει να την τροποποιεί.
+    """
+    root = tmp_path_factory.mktemp("fixture_database")
+    _populate_cache(RawCache(root / "data" / "raw"))
+    url = f"sqlite:///{(root / 'fixtures.db').as_posix()}"
+    pipeline.run_pipeline(
+        [2016, 2023, 2024, 2025, 2026], db_url=url, data_dir=root / "data", fetch=False
+    )
+    return url
+
+
 @pytest.fixture(scope="session")
 def fixture_dataset() -> clean.CleanData:
     """Το καθαρισμένο dataset των fixtures (υπολογίζεται μία φορά). Μόνο για ανάγνωση."""
     return clean.clean_all(read_raw_boxscores(), read_raw_results(), read_raw_schedule())
+
+
+# --------------------------------------------------------------------------------------
+# Φάση 3: συνθετικό πρωτάθλημα, features και μικρά μοντέλα για tests (χωρίς την πραγματική βάση)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def synthetic_league() -> League:
+    """Ντετερμινιστικό συνθετικό πρωτάθλημα (4 σεζόν, 8 ομάδες, μελλοντικοί αγώνες)."""
+    return make_league(seed=7)
+
+
+@pytest.fixture(scope="session")
+def synthetic_frame(synthetic_league: League) -> pd.DataFrame:
+    """Τα features όλων των γραμμών του συνθετικού ιστορικού."""
+    return build_features(synthetic_league.history, games=synthetic_league.games)
+
+
+def _tiny_bundle(frame: pd.DataFrame, kind: str, version: str) -> ModelBundle:
+    rows = frame[frame["is_appearance"]]
+    features = rows[FEATURE_COLUMNS].to_numpy(dtype=float)
+    targets = {"fantasy": rows["fantasy_score"].to_numpy(float), "pir": rows["pir"].to_numpy(float)}
+    if kind == "ridge":
+        models = {name: fit_ridge(features, y, alpha=10.0) for name, y in targets.items()}
+    else:
+        spec = ModelSpec("tiny", "xgb_absoluteerror", dict(DEFAULT_XGB))
+        models = {
+            name: fit_xgboost_final(spec, (features, y), rounds=25, seed=1)
+            for name, y in targets.items()
+        }
+    return ModelBundle(
+        model_version=version,
+        feature_columns=list(FEATURE_COLUMNS),
+        models=models,
+        library_versions=library_versions(),
+        trained_at="2026-01-01T00:00:00+00:00",
+        metrics={"model_version": version, "threshold": {"value": 9.99, "passed": True}},
+    )
+
+
+@pytest.fixture(scope="session")
+def tiny_xgb_bundle(synthetic_frame: pd.DataFrame) -> ModelBundle:
+    """Μικρό μοντέλο XGBoost (25 δέντρα) εκπαιδευμένο στα συνθετικά δεδομένα."""
+    return _tiny_bundle(synthetic_frame, "xgboost", "test-xgb-v1")
+
+
+@pytest.fixture(scope="session")
+def tiny_ridge_bundle(synthetic_frame: pd.DataFrame) -> ModelBundle:
+    """Μικρό μοντέλο Ridge εκπαιδευμένο στα συνθετικά δεδομένα."""
+    return _tiny_bundle(synthetic_frame, "ridge", "test-ridge-v1")

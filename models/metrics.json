@@ -1,0 +1,977 @@
+{
+  "model_version": "20261003T140043Z-7ae47948",
+  "created_at_utc": "2026-10-03T14:00:43+00:00",
+  "seed": 42,
+  "tuned": true,
+  "protocol": {
+    "description": "chronological backtest by season: model selection on validation (trained on earlier seasons), then refit on train+validation and one evaluation on the untouched test season",
+    "train": {
+      "seasons": [
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023
+      ],
+      "rows": 49877
+    },
+    "validation": {
+      "season": 2024,
+      "rows": 7106
+    },
+    "test": {
+      "season": 2025,
+      "rows": 8741
+    },
+    "final_fit": {
+      "seasons": [
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "rows": 56983
+    },
+    "final_fit_through_season": 2024,
+    "final_refit_through": null,
+    "test_mae_is_out_of_sample": true
+  },
+  "data": {
+    "last_game_date": "2026-10-02",
+    "last_played_season": 2026,
+    "n_games_played": 3079,
+    "n_player_rows": 73171,
+    "n_appearances": 66405,
+    "fingerprint": "8d8ceb6800a12cc02f4e82f18f3d7ede237ba2f62e2485646509573a213fd8db"
+  },
+  "selected_model": {
+    "name": "xgb_pseudohuber_09",
+    "family": "xgb_pseudohuber",
+    "params": {
+      "max_depth": 4,
+      "eta": 0.03,
+      "min_child_weight": 20,
+      "subsample": 0.7,
+      "colsample_bytree": 0.9,
+      "reg_lambda": 20.0,
+      "huber_slope": 5.0
+    },
+    "n_estimators": 275,
+    "n_estimators_pir": 330,
+    "validation_mae": 5.768736
+  },
+  "fantasy": {
+    "validation": {
+      "n": 7106,
+      "mae": 5.768736,
+      "rmse": 7.484735,
+      "r2": 0.275783,
+      "bias": -0.886522
+    },
+    "test": {
+      "n": 8741,
+      "mae": 5.908791,
+      "rmse": 7.695677,
+      "r2": 0.238595,
+      "bias": -0.77045
+    }
+  },
+  "pir": {
+    "validation": {
+      "n": 7106,
+      "mae": 5.435876,
+      "rmse": 7.02257,
+      "r2": 0.277579,
+      "bias": -0.797394
+    },
+    "test": {
+      "n": 8741,
+      "mae": 5.566919,
+      "rmse": 7.23892,
+      "r2": 0.238009,
+      "bias": -0.685167
+    }
+  },
+  "comparison_mae": {
+    "fantasy": {
+      "global_mean": {
+        "validation": 7.018513,
+        "test": 7.057636
+      },
+      "global_median": {
+        "validation": 6.967042,
+        "test": 7.021416
+      },
+      "naive_rolling5": {
+        "validation": 6.14362,
+        "test": 6.308851
+      },
+      "naive_season_mean": {
+        "validation": 5.98623,
+        "test": 6.14792
+      },
+      "ridge": {
+        "validation": 5.82121,
+        "test": 5.964779
+      },
+      "xgb_squarederror": {
+        "validation": 5.791411,
+        "test": 5.94035
+      },
+      "xgb_absoluteerror": {
+        "validation": 5.768767,
+        "test": 5.911844
+      },
+      "xgb_pseudohuber": {
+        "validation": 5.768736,
+        "test": 5.908791
+      }
+    },
+    "pir": {
+      "global_mean": {
+        "validation": 6.616082,
+        "test": 6.647398
+      },
+      "global_median": {
+        "validation": 6.56783,
+        "test": 6.61549
+      },
+      "naive_rolling5": {
+        "validation": 5.764446,
+        "test": 5.939411
+      },
+      "naive_season_mean": {
+        "validation": 5.619177,
+        "test": 5.785173
+      },
+      "ridge": {
+        "validation": 5.4757,
+        "test": 5.614973
+      },
+      "xgb_squarederror": {
+        "validation": 5.452609,
+        "test": 5.596082
+      },
+      "xgb_absoluteerror": {
+        "validation": 5.436108,
+        "test": 5.567742
+      },
+      "xgb_pseudohuber": {
+        "validation": 5.435876,
+        "test": 5.566919
+      }
+    }
+  },
+  "family_best_params": {
+    "ridge": {
+      "name": "ridge_alpha_100",
+      "params": {
+        "alpha": 100.0
+      },
+      "rounds": {
+        "fantasy": null,
+        "pir": null
+      }
+    },
+    "xgb_squarederror": {
+      "name": "xgb_squarederror_00",
+      "params": {
+        "max_depth": 3,
+        "eta": 0.08,
+        "min_child_weight": 20,
+        "subsample": 0.85,
+        "colsample_bytree": 0.7,
+        "reg_lambda": 20.0
+      },
+      "rounds": {
+        "fantasy": 196,
+        "pir": 189
+      }
+    },
+    "xgb_absoluteerror": {
+      "name": "xgb_absoluteerror_02",
+      "params": {
+        "max_depth": 5,
+        "eta": 0.08,
+        "min_child_weight": 20,
+        "subsample": 1.0,
+        "colsample_bytree": 0.7,
+        "reg_lambda": 1.0
+      },
+      "rounds": {
+        "fantasy": 137,
+        "pir": 143
+      }
+    },
+    "xgb_pseudohuber": {
+      "name": "xgb_pseudohuber_09",
+      "params": {
+        "max_depth": 4,
+        "eta": 0.03,
+        "min_child_weight": 20,
+        "subsample": 0.7,
+        "colsample_bytree": 0.9,
+        "reg_lambda": 20.0,
+        "huber_slope": 5.0
+      },
+      "rounds": {
+        "fantasy": 275,
+        "pir": 330
+      }
+    }
+  },
+  "segments": {
+    "validation": {
+      "minutes_mean5": {
+        "10-20 min": {
+          "n": 3041,
+          "model": 5.315959,
+          "best_baseline": 5.512384
+        },
+        "<10 min": {
+          "n": 816,
+          "model": 3.750303,
+          "best_baseline": 3.990938
+        },
+        ">20 min": {
+          "n": 3162,
+          "model": 6.766075,
+          "best_baseline": 6.944224
+        },
+        "no_history": {
+          "n": 87,
+          "model": 4.2785,
+          "best_baseline": 6.445378
+        }
+      },
+      "prior_appearances": {
+        "<5 prior": {
+          "n": 406,
+          "model": 4.663789,
+          "best_baseline": 5.47208
+        },
+        ">=5 prior": {
+          "n": 6700,
+          "model": 5.835692,
+          "best_baseline": 6.017386
+        }
+      },
+      "phase": {
+        "RS": {
+          "n": 6597,
+          "model": 5.762855,
+          "best_baseline": 5.970592
+        },
+        "playoffs/other": {
+          "n": 509,
+          "model": 5.844954,
+          "best_baseline": 6.188911
+        }
+      }
+    },
+    "test": {
+      "minutes_mean5": {
+        "10-20 min": {
+          "n": 3927,
+          "model": 5.50563,
+          "best_baseline": 5.745888
+        },
+        "<10 min": {
+          "n": 939,
+          "model": 3.900389,
+          "best_baseline": 4.085132
+        },
+        ">20 min": {
+          "n": 3774,
+          "model": 6.84182,
+          "best_baseline": 7.053904
+        },
+        "no_history": {
+          "n": 101,
+          "model": 5.392505,
+          "best_baseline": 7.103897
+        }
+      },
+      "prior_appearances": {
+        "<5 prior": {
+          "n": 491,
+          "model": 5.4009,
+          "best_baseline": 6.135951
+        },
+        ">=5 prior": {
+          "n": 8250,
+          "model": 5.939018,
+          "best_baseline": 6.148632
+        }
+      },
+      "phase": {
+        "RS": {
+          "n": 8262,
+          "model": 5.899493,
+          "best_baseline": 6.132544
+        },
+        "playoffs/other": {
+          "n": 479,
+          "model": 6.069178,
+          "best_baseline": 6.413117
+        }
+      }
+    }
+  },
+  "bootstrap": {
+    "validation": {
+      "baseline": "naive_season_mean",
+      "model_minus_baseline": {
+        "difference": -0.217494,
+        "ci_low": -0.272346,
+        "ci_high": -0.16402,
+        "prob_better": 1.0,
+        "n_games": 330,
+        "iterations": 1000
+      },
+      "model_mae_interval": {
+        "mae": 5.768736,
+        "ci_low": 5.656036,
+        "ci_high": 5.874965
+      }
+    },
+    "test": {
+      "baseline": "naive_season_mean",
+      "model_minus_baseline": {
+        "difference": -0.239128,
+        "ci_low": -0.287688,
+        "ci_high": -0.191367,
+        "prob_better": 1.0,
+        "n_games": 402,
+        "iterations": 1000
+      },
+      "model_mae_interval": {
+        "mae": 5.908791,
+        "ci_low": 5.791812,
+        "ci_high": 6.017536
+      }
+    }
+  },
+  "feature_importance_top15": [
+    {
+      "feature": "pir_mean_20",
+      "importance": 0.21876
+    },
+    {
+      "feature": "pir_ewm",
+      "importance": 0.118
+    },
+    {
+      "feature": "fantasy_season_mean",
+      "importance": 0.112457
+    },
+    {
+      "feature": "pir_season_mean",
+      "importance": 0.108963
+    },
+    {
+      "feature": "fantasy_mean_20",
+      "importance": 0.09565
+    },
+    {
+      "feature": "fantasy_ewm",
+      "importance": 0.084587
+    },
+    {
+      "feature": "pir_mean_10",
+      "importance": 0.029539
+    },
+    {
+      "feature": "min_mean_3",
+      "importance": 0.019403
+    },
+    {
+      "feature": "fantasy_mean_10",
+      "importance": 0.016752
+    },
+    {
+      "feature": "min_season_mean",
+      "importance": 0.015102
+    },
+    {
+      "feature": "min_mean_5",
+      "importance": 0.015087
+    },
+    {
+      "feature": "dnp_streak",
+      "importance": 0.014626
+    },
+    {
+      "feature": "home",
+      "importance": 0.011069
+    },
+    {
+      "feature": "fantasy_mean_5",
+      "importance": 0.010141
+    },
+    {
+      "feature": "min_last",
+      "importance": 0.007921
+    }
+  ],
+  "feature_columns": [
+    "fantasy_mean_3",
+    "fantasy_mean_5",
+    "fantasy_mean_10",
+    "fantasy_mean_20",
+    "fantasy_season_mean",
+    "fantasy_ewm",
+    "pir_mean_3",
+    "pir_mean_5",
+    "pir_mean_10",
+    "pir_mean_20",
+    "pir_season_mean",
+    "pir_ewm",
+    "pir_std_5",
+    "pir_per_min_5",
+    "min_mean_3",
+    "min_mean_5",
+    "min_season_mean",
+    "min_last",
+    "min_trend_5",
+    "starter_rate_5",
+    "games_played_season",
+    "games_played_total",
+    "team_games_season",
+    "dnp_streak",
+    "days_since_last_appearance",
+    "missed_last10",
+    "home",
+    "team_rest_days",
+    "opp_rest_days",
+    "team_short_rest",
+    "team_games_last7",
+    "opp_games_last7",
+    "team_win_pct_5",
+    "team_pd_5",
+    "team_win_pct_season",
+    "team_pd_season",
+    "opp_win_pct_5",
+    "opp_pd_5",
+    "opp_win_pct_season",
+    "opp_pd_season",
+    "opp_def_pir_5",
+    "opp_def_pir_10"
+  ],
+  "threshold": {
+    "value": 6.0,
+    "test_mae": 5.908791,
+    "best_naive_baseline": "naive_season_mean",
+    "best_naive_baseline_test_mae": 6.14792,
+    "passed": true,
+    "beats_best_naive_baseline": true,
+    "rule": "the artifact is written only if the honest test MAE (fantasy) < threshold"
+  },
+  "search": {
+    "n_candidates": 36,
+    "candidates": [
+      {
+        "name": "ridge_alpha_0.1",
+        "family": "ridge",
+        "params": {
+          "alpha": 0.1
+        },
+        "rounds": null,
+        "validation_mae": 5.822686
+      },
+      {
+        "name": "ridge_alpha_1",
+        "family": "ridge",
+        "params": {
+          "alpha": 1.0
+        },
+        "rounds": null,
+        "validation_mae": 5.822498
+      },
+      {
+        "name": "ridge_alpha_10",
+        "family": "ridge",
+        "params": {
+          "alpha": 10.0
+        },
+        "rounds": null,
+        "validation_mae": 5.822087
+      },
+      {
+        "name": "ridge_alpha_100",
+        "family": "ridge",
+        "params": {
+          "alpha": 100.0
+        },
+        "rounds": null,
+        "validation_mae": 5.82121
+      },
+      {
+        "name": "ridge_alpha_1000",
+        "family": "ridge",
+        "params": {
+          "alpha": 1000.0
+        },
+        "rounds": null,
+        "validation_mae": 5.82206
+      },
+      {
+        "name": "ridge_alpha_10000",
+        "family": "ridge",
+        "params": {
+          "alpha": 10000.0
+        },
+        "rounds": null,
+        "validation_mae": 5.832795
+      },
+      {
+        "name": "xgb_squarederror_00",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 196,
+        "validation_mae": 5.791411
+      },
+      {
+        "name": "xgb_squarederror_01",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 5,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 161,
+        "validation_mae": 5.794676
+      },
+      {
+        "name": "xgb_squarederror_02",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 1.0
+        },
+        "rounds": 78,
+        "validation_mae": 5.799786
+      },
+      {
+        "name": "xgb_squarederror_03",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0
+        },
+        "rounds": 119,
+        "validation_mae": 5.798964
+      },
+      {
+        "name": "xgb_squarederror_04",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 10,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0
+        },
+        "rounds": 171,
+        "validation_mae": 5.797129
+      },
+      {
+        "name": "xgb_squarederror_05",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 5,
+          "subsample": 0.85,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 1.0
+        },
+        "rounds": 218,
+        "validation_mae": 5.79186
+      },
+      {
+        "name": "xgb_squarederror_06",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.08,
+          "min_child_weight": 10,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0
+        },
+        "rounds": 93,
+        "validation_mae": 5.797441
+      },
+      {
+        "name": "xgb_squarederror_07",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.05,
+          "min_child_weight": 5,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 161,
+        "validation_mae": 5.792934
+      },
+      {
+        "name": "xgb_squarederror_08",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 50,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0
+        },
+        "rounds": 95,
+        "validation_mae": 5.798959
+      },
+      {
+        "name": "xgb_squarederror_09",
+        "family": "xgb_squarederror",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 20,
+          "subsample": 0.7,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 20.0
+        },
+        "rounds": 292,
+        "validation_mae": 5.792941
+      },
+      {
+        "name": "xgb_absoluteerror_00",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 309,
+        "validation_mae": 5.771522
+      },
+      {
+        "name": "xgb_absoluteerror_01",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 5,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 273,
+        "validation_mae": 5.771698
+      },
+      {
+        "name": "xgb_absoluteerror_02",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 1.0
+        },
+        "rounds": 137,
+        "validation_mae": 5.768767
+      },
+      {
+        "name": "xgb_absoluteerror_03",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0
+        },
+        "rounds": 186,
+        "validation_mae": 5.774984
+      },
+      {
+        "name": "xgb_absoluteerror_04",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 10,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0
+        },
+        "rounds": 214,
+        "validation_mae": 5.780201
+      },
+      {
+        "name": "xgb_absoluteerror_05",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 5,
+          "subsample": 0.85,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 1.0
+        },
+        "rounds": 401,
+        "validation_mae": 5.771874
+      },
+      {
+        "name": "xgb_absoluteerror_06",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.08,
+          "min_child_weight": 10,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0
+        },
+        "rounds": 140,
+        "validation_mae": 5.779043
+      },
+      {
+        "name": "xgb_absoluteerror_07",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.05,
+          "min_child_weight": 5,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0
+        },
+        "rounds": 250,
+        "validation_mae": 5.770373
+      },
+      {
+        "name": "xgb_absoluteerror_08",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 50,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0
+        },
+        "rounds": 136,
+        "validation_mae": 5.771777
+      },
+      {
+        "name": "xgb_absoluteerror_09",
+        "family": "xgb_absoluteerror",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 20,
+          "subsample": 0.7,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 20.0
+        },
+        "rounds": 410,
+        "validation_mae": 5.771125
+      },
+      {
+        "name": "xgb_pseudohuber_00",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0,
+          "huber_slope": 10.0
+        },
+        "rounds": 198,
+        "validation_mae": 5.77519
+      },
+      {
+        "name": "xgb_pseudohuber_01",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 3,
+          "eta": 0.08,
+          "min_child_weight": 5,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0,
+          "huber_slope": 10.0
+        },
+        "rounds": 181,
+        "validation_mae": 5.778926
+      },
+      {
+        "name": "xgb_pseudohuber_02",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 20,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 1.0,
+          "huber_slope": 5.0
+        },
+        "rounds": 70,
+        "validation_mae": 5.775048
+      },
+      {
+        "name": "xgb_pseudohuber_03",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 20,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0,
+          "huber_slope": 10.0
+        },
+        "rounds": 133,
+        "validation_mae": 5.777464
+      },
+      {
+        "name": "xgb_pseudohuber_04",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.05,
+          "min_child_weight": 10,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0,
+          "huber_slope": 5.0
+        },
+        "rounds": 106,
+        "validation_mae": 5.777785
+      },
+      {
+        "name": "xgb_pseudohuber_05",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 5,
+          "subsample": 0.85,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 1.0,
+          "huber_slope": 2.0
+        },
+        "rounds": 311,
+        "validation_mae": 5.77622
+      },
+      {
+        "name": "xgb_pseudohuber_06",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 6,
+          "eta": 0.08,
+          "min_child_weight": 10,
+          "subsample": 0.85,
+          "colsample_bytree": 0.5,
+          "reg_lambda": 20.0,
+          "huber_slope": 10.0
+        },
+        "rounds": 77,
+        "validation_mae": 5.782668
+      },
+      {
+        "name": "xgb_pseudohuber_07",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.05,
+          "min_child_weight": 5,
+          "subsample": 1.0,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 20.0,
+          "huber_slope": 5.0
+        },
+        "rounds": 130,
+        "validation_mae": 5.777145
+      },
+      {
+        "name": "xgb_pseudohuber_08",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 5,
+          "eta": 0.08,
+          "min_child_weight": 50,
+          "subsample": 0.7,
+          "colsample_bytree": 0.7,
+          "reg_lambda": 5.0,
+          "huber_slope": 2.0
+        },
+        "rounds": 62,
+        "validation_mae": 5.774403
+      },
+      {
+        "name": "xgb_pseudohuber_09",
+        "family": "xgb_pseudohuber",
+        "params": {
+          "max_depth": 4,
+          "eta": 0.03,
+          "min_child_weight": 20,
+          "subsample": 0.7,
+          "colsample_bytree": 0.9,
+          "reg_lambda": 20.0,
+          "huber_slope": 5.0
+        },
+        "rounds": 275,
+        "validation_mae": 5.768736
+      }
+    ]
+  },
+  "library_versions": {
+    "python": "3.13.2",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "scikit-learn": "1.9.1",
+    "scipy": "1.18.1",
+    "xgboost": "3.4.1",
+    "joblib": "1.6.0"
+  },
+  "training_seconds": 72.7
+}
