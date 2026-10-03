@@ -20,3 +20,6 @@ sqlalchemy>=2.1
 psycopg[binary]>=3.3
 euroleague-api>=0.1.1
 pydantic-settings>=2.15
+# tzdata: βάση ζωνών ώρας για το zoneinfo (τα Windows και τα slim containers δεν έχουν σύστημα tz).
+# Χρειάζεται στο ingestion για τη μετατροπή της ώρας CET/CEST του API σε UTC.
+tzdata>=2024.1
