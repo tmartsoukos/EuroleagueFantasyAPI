@@ -1,0 +1,47 @@
+# Ρυθμίσεις του project: packaging (src layout), pytest και ruff.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elfantasy"
+version = "0.1.0"
+description = "Euroleague Fantasy Points Predictor API: πρόβλεψη fantasy score παικτών Euroleague"
+readme = "README.md"
+requires-python = ">=3.11"
+# Οι εξαρτήσεις διαβάζονται από το requirements.txt, ώστε να υπάρχει μία μόνο πηγή αλήθειας.
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# importlib: επιτρέπει αρχεία δοκιμών με το ίδιο όνομα σε διαφορετικούς φακέλους (unit/integration).
+addopts = "-ra --import-mode=importlib"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["data", "models"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: ταξινόμηση imports, B: bugbear, UP: σύγχρονη σύνταξη Python.
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Το FastAPI χρησιμοποιεί Depends()/Query()/Header() ως προεπιλεγμένες τιμές παραμέτρων (κανόνας B008).
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Security",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elfantasy"]

@@ -1,0 +1,6 @@
+# Εξαρτήσεις ανάπτυξης: tests, coverage, HTTP client για το TestClient και linter.
+-r requirements.txt
+pytest>=9.1
+pytest-cov>=7.1
+httpx>=0.28
+ruff>=0.16

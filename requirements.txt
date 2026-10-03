@@ -1,0 +1,22 @@
+# Εξαρτήσεις εκτέλεσης (runtime) του Euroleague Fantasy Points Predictor.
+#
+# Οι ελάχιστες εκδόσεις είναι αυτές με τις οποίες δοκιμάστηκε το project
+# (Python 3.13, Windows 11, 2026-10-03). Επιβεβαιώθηκε ότι το `pip install -r` δουλεύει.
+#
+# Έκδοση Python: το CI και το Render τρέχουν σε Python 3.12. Οι τελευταίες εκδόσεις numpy 2.5,
+# scipy 1.18 και xgboost 3.4 απαιτούν Python >= 3.12 (σε 3.11 το pip θα διάλεγε numpy 2.4,
+# scipy 1.17 και xgboost 3.2, γι' αυτό το κάτω όριο του xgboost είναι 3.2). Αν το αποθηκευμένο
+# μοντέλο (joblib) εκπαιδευτεί με άλλη έκδοση xgboost/scikit-learn από αυτή που το φορτώνει,
+# μπορεί να μην ανοίξει σωστά: οι εκδόσεις καταγράφονται στο models/metrics.json και
+# ελέγχονται κατά τη φόρτωση.
+fastapi>=0.142
+uvicorn>=0.54
+pandas>=3.0
+pyarrow>=25.0
+scikit-learn>=1.9
+xgboost>=3.2
+joblib>=1.6
+sqlalchemy>=2.1
+psycopg[binary]>=3.3
+euroleague-api>=0.1.1
+pydantic-settings>=2.15
