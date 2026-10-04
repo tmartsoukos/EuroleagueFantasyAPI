@@ -29,6 +29,8 @@
 | `src/elfantasy/api/health.py` | Σύνθεση της απάντησης του `/health` |
 | `src/elfantasy/api/schemas.py` | Μοντέλα Pydantic αιτημάτων και απαντήσεων, με περιγραφές και παραδείγματα |
 | `src/elfantasy/api/deps.py` | Dependencies: κατάσταση, `X-API-Key`, κανονικοποίηση `player_id` |
+| `src/elfantasy/api/security.py` | Κανόνες του `ADMIN_API_KEY`: ελάχιστο μήκος (24) και σύγκριση σε bytes |
+| `src/elfantasy/api/limits.py` | Middleware ορίου μεγέθους σώματος αιτήματος (64 KiB, HTTP 413) |
 | `src/elfantasy/api/responses.py` | Κοινή τεκμηρίωση των απαντήσεων σφάλματος στο OpenAPI |
 | `src/elfantasy/api/routers/` | Λεπτοί routers: `health`, `predict` (και `/rankings`), `players`, `availability`, `admin` |
 | `src/elfantasy/db/models.py` | Νέος πίνακας `player_availability` (ενότητα 7)· σχήμα, migrations και Postgres: `docs/DATABASE.md` |
@@ -70,7 +72,7 @@ uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT --workers 1
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///data/elfantasy.db` | Βάση ιστορικού, προγράμματος και διαθεσιμότητας. Στην παραγωγή το Supabase Postgres μέσω του session pooler (`postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require`, βλ. `docs/DATABASE.md`)· τα URL `postgresql://…` μετατρέπονται σε `postgresql+psycopg://…`. Ένα αρχείο SQLite που δεν υπάρχει **δεν δημιουργείται**: η υπηρεσία γίνεται degraded. Σε Postgres το API **δεν δημιουργεί ποτέ πίνακες** (τους δημιουργούν τα migrations)· ο κωδικός δεν εμφανίζεται ποτέ σε logs ή μηνύματα |
 | `MODEL_PATH` | `models/model.joblib` | Το αποθηκευμένο μοντέλο. Αν λείπει ή είναι ασύμβατο, η υπηρεσία γίνεται degraded |
-| `ADMIN_API_KEY` | κενό | Κλειδί για τα προστατευμένα endpoints (ενότητα 8). **Κενό = τα endpoints είναι κλειστά** |
+| `ADMIN_API_KEY` | κενό | Κλειδί για τα προστατευμένα endpoints (ενότητα 8), **τουλάχιστον 24 χαρακτήρες**. **Κενό ή πιο σύντομο = τα endpoints είναι κλειστά** |
 | `MAE_THRESHOLD` | `6.00` | Δεν χρησιμοποιείται από το API (μόνο από την εκπαίδευση και το quality gate). Το `/health` δείχνει το threshold που καταγράφηκε στο `metrics.json` |
 | `DATA_DIR` | `data` | Δεν χρησιμοποιείται από το API (cache, αναφορές και logs του ingestion) |
 | `RENDER_GIT_COMMIT` (ή `GIT_COMMIT`) | κενό | Το commit του κώδικα που τρέχει. Το Render ορίζει μόνο του το `RENDER_GIT_COMMIT`· εμφανίζεται στο `commit` του `/health` και το διαβάζει το CI μετά από κάθε deploy (`docs/DEPLOY.md`). Τοπικά μένει κενό (`commit: null`) |
@@ -397,8 +399,10 @@ curl -s -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:8000/admin/refre
 |---|---|
 | 401 | Λείπει ή είναι λάθος το `X-API-Key`: `{"detail": "invalid or missing API key"}` |
 | 404 | Άγνωστος παίκτης ή ομάδα, εγγραφή διαθεσιμότητας που δεν υπάρχει, άγνωστη διαδρομή (`{"detail": "Not Found"}`) |
+| 400 | Άκυρη επικεφαλίδα `Content-Length` (όχι μη αρνητικός ακέραιος): `{"detail": "invalid Content-Length header"}` |
 | 405 | Λάθος μέθοδος (`{"detail": "Method Not Allowed"}`) |
-| 422 | Επικύρωση παραμέτρων ή σώματος |
+| 413 | Σώμα αιτήματος μεγαλύτερο από 64 KiB: `{"detail": "request body too large"}`. Ισχύει για κάθε endpoint και **πριν** από τον έλεγχο του κλειδιού (το σώμα δεν διαβάζεται) |
+| 422 | Επικύρωση παραμέτρων ή σώματος (και κείμενο `note`/`source` με χαρακτήρα NUL ή μεμονωμένο surrogate, που δεν αποθηκεύονται) |
 | 500 | Απρόβλεπτο σφάλμα: `{"detail": "internal server error"}` (η λεπτομέρεια μόνο στο log) |
 | 503 | Δεν υπάρχει μοντέλο (`prediction model is not available`), βάση (`database is not available`, `database unavailable` για σφάλμα βάσης σε αίτημα) ή κλειδί διαχειριστή (`admin API is disabled`) |
 
@@ -423,11 +427,12 @@ curl -s -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:8000/admin/refre
 ## 8. Ασφάλεια
 
 - **Προστατευμένα endpoints:** `POST /availability`, `DELETE /availability/{player_id}`, `POST /admin/refresh`. Όλα τα υπόλοιπα είναι δημόσια και μόνο για ανάγνωση.
-- **`X-API-Key`.** Το header συγκρίνεται με το `ADMIN_API_KEY` με `secrets.compare_digest` (σταθερός χρόνος, πάνω σε bytes UTF-8, άρα δουλεύει και με μη-ASCII τιμές). Λείπει ή είναι λάθος: 401. Το κλειδί δίνεται **μόνο** στο header (όχι ως query ή cookie).
-- **Κλειστά όταν δεν υπάρχει κλειδί.** Αν το `ADMIN_API_KEY` είναι κενό (ή μόνο κενά), τα προστατευμένα endpoints απαντούν **503 `admin API is disabled`**, ανεξάρτητα από το header που στέλνεται: ποτέ ανοιχτά. Το `GET /availability` δουλεύει κανονικά.
+- **`X-API-Key`.** Το header συγκρίνεται με το `ADMIN_API_KEY` με `secrets.compare_digest` (σταθερός χρόνος, πάνω σε bytes). Το Starlette αποκωδικοποιεί τις επικεφαλίδες ως latin-1· η αντίστροφη κωδικοποίηση ανακτά τα bytes που έστειλε ο client, άρα ένα κλειδί με μη-ASCII χαρακτήρες σε UTF-8 (όπως το στέλνουν οι περισσότεροι clients) ταιριάζει με το `ADMIN_API_KEY`. Λείπει ή είναι λάθος: 401. Το κλειδί δίνεται **μόνο** στο header (όχι ως query ή cookie).
+- **Κλειστά όταν δεν υπάρχει (ή είναι αδύναμο) κλειδί.** Αν το `ADMIN_API_KEY` είναι κενό, μόνο κενά ή **πιο σύντομο από 24 χαρακτήρες**, τα προστατευμένα endpoints απαντούν **503 `admin API is disabled`**, ανεξάρτητα από το header που στέλνεται: ποτέ ανοιχτά. Στην τελευταία περίπτωση το startup γράφει στο log σφάλμα (χωρίς το κλειδί). Ο λόγος: χωρίς rate limiting ένα σύντομο κλειδί σπάει με brute force (μετρήθηκαν περίπου 600 προσπάθειες το δευτερόλεπτο τοπικά)· το κλειδί των 43 χαρακτήρων από το `secrets.token_urlsafe(32)` δεν σπάει. Το `GET /availability` δουλεύει κανονικά.
 - **Το κλειδί δεν εμφανίζεται ποτέ** σε logs, σε μηνύματα σφάλματος ή στο OpenAPI (ελέγχεται από tests και από πραγματικό τρέξιμο). Στο Swagger δηλώνεται ως security scheme `APIKeyHeader`: με το κουμπί **Authorize** του `/docs` βάζεις το κλειδί μία φορά και δουλεύουν όλα τα «Try it out».
 - **Σύσταση:** μεγάλη τυχαία τιμή (π.χ. `python -c "import secrets; print(secrets.token_urlsafe(32))"`), μόνο μέσω περιβάλλοντος (Render secret), ποτέ σε αρχείο που γίνεται commit, και μόνο πάνω από HTTPS (το Render παρέχει TLS). Αλλαγή κλειδιού: νέα τιμή στο περιβάλλον και επανεκκίνηση.
-- Η υπηρεσία δεν έχει rate limiting ούτε προστασία από brute force του κλειδιού (ενότητα 13).
+- **Όριο σώματος αιτήματος: 64 KiB.** Το FastAPI θα διάβαζε και θα ανέλυε ολόκληρο το σώμα πριν από τον έλεγχο του κλειδιού· ένα ανώνυμο `POST` 60 MB ανέβαζε τη μνήμη της διεργασίας κατά 163 MB (το free plan του Render έχει 512 MB). Το middleware `BodySizeLimitMiddleware` απαντά 413 αμέσως (με βάση το `Content-Length`, ή καθώς διαβάζεται σώμα χωρίς `Content-Length`) και κλείνει τη σύνδεση. Τα νόμιμα σώματα είναι λίγα KB.
+- Η υπηρεσία δεν έχει rate limiting (ενότητα 13).
 
 ## 9. Εκκίνηση, degraded κατάσταση και συμπεριφορά σε αποτυχίες
 
@@ -512,7 +517,7 @@ curl -s https://<host>/health
 - **Δεν δοκιμάστηκε στο Render:** ούτε χρόνος εκκίνησης με 0,1 CPU, ούτε ταχύτητα στο free tier. Η μνήμη μετρήθηκε τοπικά σε Linux με Python 3.12: κορυφή ~300 MB και μόνιμο RSS ~235 MB, κάτω από τα 512 MB του free plan (`docs/DEPLOY.md`, ενότητα 7)· η μέτρηση στο ίδιο το Render δεν έχει γίνει. Δεν έχει ελεγχθεί αν η εκκίνηση (περίπου 6 s τοπικά) χωράει στα χρονικά όρια του Render σε αργό instance.
 - **Python.** Το project απαιτεί Python ≥ 3.12 (`requires-python` του `pyproject.toml`): οι εκδόσεις του `constraints.txt` δεν υπάρχουν για την 3.11. Τα tests περνούν σε Python 3.13.2 (Windows) και σε 3.12 (Linux, καθαρό venv, όπως θα τα τρέξει το CI)· η 3.11 δεν υποστηρίζεται.
 - **Ένα worker.** Ο `Predictor` και η cache του ζουν στη διεργασία· με πολλούς workers το `POST /admin/refresh` ανανεώνει μόνο έναν.
-- **Δεν υπάρχει rate limiting, προστασία από brute force του κλειδιού, όριο μεγέθους σώματος αιτήματος ή CORS.** Ό,τι περιορισμό παρέχει το Render στο επίπεδο του proxy ισχύει, αλλά δεν δοκιμάστηκε. Αν χρειαστεί κλήση από browser σε άλλο domain, πρέπει να προστεθεί CORS.
+- **Δεν υπάρχει rate limiting ή CORS.** Η προστασία από brute force του κλειδιού βασίζεται στο ελάχιστο μήκος των 24 χαρακτήρων· ό,τι περιορισμό παρέχει το Render στο επίπεδο του proxy ισχύει, αλλά δεν δοκιμάστηκε. Το όριο σώματος αιτήματος (64 KiB) υπάρχει. Αν χρειαστεί κλήση από browser σε άλλο domain, πρέπει να προστεθεί CORS.
 - **Ο «σήμερα» είναι UTC.** Ένας αγώνας με ώρα έναρξης κοντά στα μεσάνυχτα UTC αλλάζει από «επόμενος» σε «δεν υπάρχει» στις 00:00 UTC, ακόμη κι αν δεν έχει ενημερωθεί η βάση με το αποτέλεσμά του.
 - **Ανανέωση χειροκίνητη.** Δεν υπάρχει αυτόματο ingestion ή αυτόματο refresh: ο διαχειριστής τρέχει το ingestion και μετά το `/admin/refresh` (το `data_loaded_through` του `/health` δείχνει αν χρειάζεται).
 - **Μόνο ο ίδιος ο παίκτης στο override** (όχι επιπτώσεις στους συμπαίκτες) και **χειροκίνητες εγγραφές που δεν λήγουν μόνες τους** (ενότητα 7). Δεν υπάρχει ιστορικό αλλαγών διαθεσιμότητας (μόνο η τελευταία εγγραφή ανά παίκτη).

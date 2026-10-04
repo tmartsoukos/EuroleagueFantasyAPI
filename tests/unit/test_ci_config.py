@@ -359,14 +359,45 @@ class TestDeployJob:
     ):
         deploy = jobs["deploy"]
         check = find_step(deploy, "Post-deploy smoke check")
-        assert check["if"] == "env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL != ''"
+        assert check["if"] == (
+            "env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL != '' "
+            "&& steps.guard.outputs.superseded != 'true'"
+        )
         command = " ".join(check["run"].split())
         assert 'python scripts/smoke_check.py --url "${RENDER_SERVICE_URL}"' in command
         assert '--expect-commit "${GITHUB_SHA}"' in command
         assert "--timeout-seconds 900" in command
         skipped = find_step(deploy, "Smoke check skipped")
-        assert skipped["if"] == "env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL == ''"
+        assert skipped["if"] == (
+            "env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL == '' "
+            "&& steps.guard.outputs.superseded != 'true'"
+        )
         assert "exit 1" not in skipped["run"]
+
+    def test_a_superseded_commit_does_not_deploy(self, jobs):
+        """Δύο διαδοχικά pushes στο main: αν το παλαιότερο τελειώσει τους ελέγχους μετά το νεότερο,
+        δεν πρέπει να κάνει deploy πάνω από αυτό (εύρημα m6 του review της Φάσης 7)."""
+        deploy = jobs["deploy"]
+        names = [step.get("name", "") for step in steps_of(deploy)]
+        guard = find_step(deploy, "Check that this commit is still the head of main")
+        assert guard["id"] == "guard"
+        assert guard["if"] == "env.RENDER_DEPLOY_HOOK_URL != ''"
+        script = guard["run"]
+        assert "git ls-remote" in script and "refs/heads/main" in script
+        assert '"${GITHUB_SHA}"' in script and "superseded=true" in script
+        # Αν το main δεν διαβάζεται, το deploy συνεχίζει (ο φύλακας δεν είναι δικλείδα ασφαλείας).
+        assert "superseded=false" in script and "exit 1" not in script
+        # Ο φύλακας έρχεται πριν από το Trigger και κρατά και τα δύο επόμενα steps εκτός.
+        assert names.index(guard["name"]) < names.index("Trigger the Render deploy hook")
+        trigger = find_step(deploy, "Trigger the Render deploy hook")
+        assert trigger["if"] == (
+            "env.RENDER_DEPLOY_HOOK_URL != '' && steps.guard.outputs.superseded != 'true'"
+        )
+        notice = find_step(deploy, "Deploy skipped (superseded")
+        assert notice["if"] == (
+            "env.RENDER_DEPLOY_HOOK_URL != '' && steps.guard.outputs.superseded == 'true'"
+        )
+        assert "exit 1" not in notice["run"]  # ένα ξεπερασμένο commit δεν είναι αποτυχία
 
     def test_the_job_timeout_covers_the_retries_and_the_smoke_check(self, jobs):
         assert jobs["deploy"]["timeout-minutes"] >= 25  # 3 × 60 s + αναμονές + 15 λεπτά smoke check

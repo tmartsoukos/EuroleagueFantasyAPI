@@ -16,6 +16,7 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy import Engine
 
 from elfantasy.api.schemas import PLAYER_ID_PATTERN, PLAYER_ID_RE, normalise_player_id
+from elfantasy.api.security import admin_key_is_usable, header_bytes
 from elfantasy.api.services import PredictionService
 from elfantasy.api.state import AppState
 
@@ -27,7 +28,8 @@ api_key_scheme = APIKeyHeader(
     description=(
         "Κλειδί διαχειριστή για τα προστατευμένα endpoints (`POST /availability`, "
         "`DELETE /availability/{player_id}`, `POST /admin/refresh`). Ορίζεται από το "
-        "περιβάλλον με `ADMIN_API_KEY`· αν δεν έχει οριστεί, τα endpoints αυτά είναι κλειστά."
+        "περιβάλλον με `ADMIN_API_KEY` (τουλάχιστον 24 χαρακτήρες)· αν δεν έχει οριστεί ή είναι "
+        "πιο σύντομο, τα endpoints αυτά είναι κλειστά."
     ),
 )
 
@@ -65,14 +67,14 @@ def require_admin(
 ) -> None:
     """Επιτρέπει το αίτημα μόνο με σωστό `X-API-Key`.
 
-    Κενό `ADMIN_API_KEY` → 503 «admin API is disabled» (πριν από οποιονδήποτε έλεγχο κλειδιού).
-    Κλειδί που λείπει ή είναι λάθος → 401.
+    Κενό ή πολύ σύντομο `ADMIN_API_KEY` (< 24 χαρακτήρες) → 503 «admin API is disabled» (πριν από
+    οποιονδήποτε έλεγχο κλειδιού). Κλειδί που λείπει ή είναι λάθος → 401.
     """
     configured = state.settings.admin_api_key if state.settings is not None else ""
-    if not configured.strip():
+    if not admin_key_is_usable(configured):
         raise HTTPException(status_code=503, detail="admin API is disabled")
     if api_key is None or not secrets.compare_digest(
-        api_key.encode("utf-8"), configured.encode("utf-8")
+        header_bytes(api_key), configured.encode("utf-8")
     ):
         raise HTTPException(status_code=401, detail="invalid or missing API key")
 

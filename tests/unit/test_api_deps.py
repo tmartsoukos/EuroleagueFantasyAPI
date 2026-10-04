@@ -22,6 +22,7 @@ from elfantasy.api.schemas import (
     PredictionOut,
     normalise_player_id,
 )
+from elfantasy.api.security import MIN_ADMIN_KEY_LENGTH
 from elfantasy.api.state import AppState
 
 
@@ -49,17 +50,41 @@ class TestRequireAdmin:
         assert error.value.detail == "admin API is disabled"
 
     def test_a_non_ascii_key_works_on_both_sides(self):
-        state = self.state("κλειδί-ασφαλείας")
-        assert require_admin(state, "κλειδί-ασφαλείας") is None
+        key = "κλειδί-ασφαλείας-δοκιμής-2026"
+        state = self.state(key)
+        assert require_admin(state, key) is None
         with pytest.raises(HTTPException) as error:
             require_admin(state, "κλειδί")
         assert error.value.status_code == 401
 
+    def test_a_non_ascii_key_sent_as_utf_8_bytes_matches_like_a_real_client(self):
+        """Το Starlette αποκωδικοποιεί τις επικεφαλίδες ως latin-1: ένας πραγματικός client
+        στέλνει το κλειδί σε UTF-8 και ο server βλέπει latin-1 «μπερδεμένο» κείμενο."""
+        key = "κλειδί-ασφαλείας-δοκιμής-2026"
+        as_seen_by_starlette = key.encode("utf-8").decode("latin-1")
+        assert as_seen_by_starlette != key
+        assert require_admin(self.state(key), as_seen_by_starlette) is None
+        with pytest.raises(HTTPException) as error:
+            require_admin(self.state(key), as_seen_by_starlette[:-1] + "x")
+        assert error.value.status_code == 401
+
     def test_a_key_with_surrounding_spaces_must_match_exactly(self):
-        state = self.state(" spaced-key ")
-        assert require_admin(state, " spaced-key ") is None
+        state = self.state(" spaced-key-with-enough-length ")
+        assert require_admin(state, " spaced-key-with-enough-length ") is None
         with pytest.raises(HTTPException):
-            require_admin(state, "spaced-key")
+            require_admin(state, "spaced-key-with-enough-length")
+
+    @pytest.mark.parametrize("configured", ["1234", "short", "x" * 23, " " + "x" * 22 + " "])
+    def test_a_too_short_key_keeps_the_admin_api_closed(self, configured):
+        """Ένα σύντομο κλειδί δεν ανοίγει τα endpoints, ούτε με το σωστό κλειδί (503, όχι 401)."""
+        with pytest.raises(HTTPException) as error:
+            require_admin(self.state(configured), configured)
+        assert error.value.status_code == 503
+        assert error.value.detail == "admin API is disabled"
+
+    def test_the_minimum_length_is_accepted(self):
+        key = "k" * MIN_ADMIN_KEY_LENGTH
+        assert require_admin(self.state(key), key) is None
 
 
 class TestValidPlayerId:

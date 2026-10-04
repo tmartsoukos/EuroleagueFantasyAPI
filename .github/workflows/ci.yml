@@ -199,11 +199,40 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Αν έχει ήδη γίνει νεότερο push στο main, αυτό το run είναι ξεπερασμένο: τα jobs `test` δύο
+      # διαδοχικών pushes τρέχουν παράλληλα και μπορεί να τελειώσουν με ανάποδη σειρά, οπότε το
+      # παλαιότερο commit θα έκανε deploy ΜΕΤΑ το νεότερο και θα το αντικαθιστούσε. Το νεότερο
+      # push έχει το δικό του run και θα κάνει το deploy. Αν δεν διαβάζεται το main, συνεχίζει.
+      - name: Check that this commit is still the head of main
+        id: guard
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: |
+          remote_head="$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/main | cut -f1 || true)"
+          if [ -z "${remote_head}" ]; then
+            echo "::warning::could not read the head of main: the deploy continues without the check"
+            echo "superseded=false" >> "$GITHUB_OUTPUT"
+          elif [ "${remote_head}" != "${GITHUB_SHA}" ]; then
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            echo "main is now at ${remote_head}: ${GITHUB_SHA} is superseded."
+          else
+            echo "superseded=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy skipped (superseded by a newer commit)
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && steps.guard.outputs.superseded == 'true'
+        run: |
+          {
+            echo "### deploy skipped: superseded by a newer commit"
+            echo
+            echo "\`${GITHUB_SHA}\` is no longer the head of \`main\`. The run of the newer commit deploys it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::deploy skipped: ${GITHUB_SHA} was superseded by a newer commit on main"
+
       # Το Deploy Hook ξεκινά deploy ΑΚΡΙΒΩΣ του commit που πέρασε τους ελέγχους (παράμετρος `ref`),
       # όχι «του τελευταίου στο branch». Το URL δεν τυπώνεται ποτέ: κρύβεται με add-mask και τα
       # μηνύματα του curl δεν το περιέχουν.
       - name: Trigger the Render deploy hook
-        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && steps.guard.outputs.superseded != 'true'
         run: |
           echo "::add-mask::${RENDER_DEPLOY_HOOK_URL}"
           hook="${RENDER_DEPLOY_HOOK_URL}"
@@ -248,7 +277,7 @@ jobs:
       # Render χτίζει τη νέα έκδοση ενώ η παλιά εξυπηρετεί. Γι' αυτό ο έλεγχος περιμένει μέχρι 15
       # λεπτά και απαιτεί το /health να είναι ok ΚΑΙ να δηλώνει το commit που μόλις στείλαμε.
       - name: Post-deploy smoke check (/health)
-        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL != ''
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL != '' && steps.guard.outputs.superseded != 'true'
         run: >-
           python scripts/smoke_check.py
           --url "${RENDER_SERVICE_URL}"
@@ -256,7 +285,7 @@ jobs:
           --timeout-seconds 900
 
       - name: Smoke check skipped (RENDER_SERVICE_URL not set)
-        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL == ''
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL == '' && steps.guard.outputs.superseded != 'true'
         run: |
           {
             echo "### Post-deploy smoke check skipped"

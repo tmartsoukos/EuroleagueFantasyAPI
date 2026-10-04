@@ -14,14 +14,18 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from importlib import metadata
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from elfantasy.api import state as app_state
+from elfantasy.api.limits import MAX_REQUEST_BODY_BYTES, BodySizeLimitMiddleware
 from elfantasy.api.routers import admin, health, players, predict
 from elfantasy.api.routers import availability as availability_router
 from elfantasy.api.services import NotFoundError, utc_now
@@ -130,6 +134,9 @@ def create_app(
     )
     app.state.api = state
 
+    # Όριο μεγέθους σώματος ΠΡΙΝ από οποιοδήποτε routing ή έλεγχο κλειδιού (api/limits.py).
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
+
     app.include_router(health.router)
     app.include_router(predict.router)
     app.include_router(players.router)
@@ -137,6 +144,18 @@ def create_app(
     app.include_router(admin.router)
     _register_handlers(app)
     return app
+
+
+def _printable(value: Any) -> Any:
+    """Αντικαθιστά τα μεμονωμένα surrogates κάθε κειμένου με την κατάληξη `\\udXXX` (αναδρομικά),
+    ώστε το αποτέλεσμα να κωδικοποιείται πάντα σε UTF-8."""
+    if isinstance(value, str):
+        return value.encode("utf-8", "backslashreplace").decode("utf-8")
+    if isinstance(value, list):
+        return [_printable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _printable(item) for key, item in value.items()}
+    return value
 
 
 def _register_handlers(app: FastAPI) -> None:
@@ -149,6 +168,17 @@ def _register_handlers(app: FastAPI) -> None:
     @app.exception_handler(NotFoundError)
     async def not_found_handler(_request: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": exc.message})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # Όπως ο προεπιλεγμένος χειριστής του FastAPI (`{"detail": [...]}`, κωδικός 422), αλλά το
+        # `input` κάθε σφάλματος καθαρίζεται από μεμονωμένα surrogates (π.χ. "\ud800" σε JSON),
+        # που δεν κωδικοποιούνται σε UTF-8 και θα έριχναν την ίδια την απάντηση σφάλματος σε 500.
+        return JSONResponse(
+            status_code=422, content={"detail": _printable(jsonable_encoder(exc.errors()))}
+        )
 
     @app.exception_handler(SQLAlchemyError)
     async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:

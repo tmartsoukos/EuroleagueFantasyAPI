@@ -20,6 +20,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from elfantasy.api.availability import ensure_table
+from elfantasy.api.security import MIN_ADMIN_KEY_LENGTH, admin_key_is_usable
 from elfantasy.api.services import Clock, PredictionService, utc_now
 from elfantasy.config import Settings, get_settings
 from elfantasy.db.session import get_engine
@@ -61,6 +62,12 @@ def start(state: AppState) -> None:
     settings = state.settings if state.settings is not None else get_settings()
     state.settings = settings
     state.problems.clear()
+    if settings.admin_api_key.strip() and not admin_key_is_usable(settings.admin_api_key):
+        # Το κλειδί ΔΕΝ γράφεται στο log, μόνο το γεγονός ότι είναι πολύ σύντομο.
+        logger.error(
+            "ADMIN_API_KEY is shorter than %d characters: the admin endpoints stay closed (503)",
+            MIN_ADMIN_KEY_LENGTH,
+        )
     _start_database(state, settings)
     if state.engine is not None and "database" not in state.problems:
         _start_service(state, settings)
