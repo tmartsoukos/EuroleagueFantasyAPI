@@ -233,7 +233,7 @@ PIR = Points + TotalRebounds + Assistances + Steals + BlocksFavour + FoulsReceiv
 - Η ώρα του v1 το χειμώνα (UTC+1): επιβεβαιώθηκε μόνο για το CEST (UTC+2).
 - Η αιτία των κενών στους κωδικούς αγώνων (π.χ. 31 κενά το 2021).
 - Αν το `SIMONOVIC, MARKO` με δύο IDs είναι ένας ή δύο παίκτες, και πόσοι ακόμη παίκτες έχουν διπλά IDs στο πλήρες ιστορικό.
-- Η λειτουργία του project σε Python 3.11: **δεν υποστηρίζεται** από τη Φάση 6 (το `requires-python` είναι `>=3.12`, γιατί οι εκδόσεις του `constraints.txt` απαιτούν 3.12). Η λειτουργία σε 3.12 δοκιμάστηκε σε Linux (Ubuntu 24.04, καθαρό venv) και στα Windows· το πρώτο πραγματικό run του CI στο GitHub δεν έχει γίνει ακόμη (`docs/DEPLOY.md`, ενότητα 9).
+- Η λειτουργία του project σε Python 3.11: **δεν υποστηρίζεται** από τη Φάση 6 (το `requires-python` είναι `>=3.12`, γιατί οι εκδόσεις του `constraints.txt` απαιτούν 3.12). Η λειτουργία σε 3.12 δοκιμάστηκε σε Linux (Ubuntu 24.04, καθαρό venv) και στα Windows· το πρώτο πραγματικό run του CI στο GitHub (Linux, Python 3.12, commit `4ca34b0`) πέρασε με 1.964 tests και coverage 99,06% (`docs/DEPLOY.md`, ενότητα 9).
 
 ## 12. Συστάσεις για τη Φάση 2
 

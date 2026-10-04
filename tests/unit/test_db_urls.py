@@ -182,3 +182,52 @@ def test_the_password_pattern_matches_only_userinfo():
     assert urls._PASSWORD_IN_URL.match("postgresql://u:pw@h/db").group(1) == "pw"
     assert urls._PASSWORD_IN_URL.match("postgresql://u@h/db") is None
     assert urls._PASSWORD_IN_URL.match("sqlite:///x.db") is None
+
+
+class TestSecretsInTheQuery:
+    """Το libpq δέχεται τον κωδικό και ως παράμετρο του URL (`?password=...`): η SQLAlchemy τον
+    προωθεί αυτούσιο και το `hide_password` δεν τον πιάνει (εύρημα του review της Φάσης 7)."""
+
+    QUERY_SECRET = "Sup3rS3cret"
+    URL = f"postgresql://user@127.0.0.1:1/db?password={QUERY_SECRET}&sslmode=require"
+
+    def test_safe_url_hides_a_password_in_the_query(self):
+        shown = safe_url(self.URL)
+        assert self.QUERY_SECRET not in shown
+        assert "password=***" in shown and "sslmode=require" in shown
+
+    @pytest.mark.parametrize("key", ["password", "sslpassword", "passphrase", "PASSWORD"])
+    def test_every_secret_parameter_is_hidden(self, key):
+        shown = safe_url(f"postgresql://u@h/db?{key}={self.QUERY_SECRET}&connect_timeout=3")
+        assert self.QUERY_SECRET not in shown
+        assert "connect_timeout=3" in shown
+
+    def test_a_password_in_both_places_is_hidden_in_both(self):
+        shown = safe_url(f"postgresql://u:{SECRET}@h/db?password={self.QUERY_SECRET}")
+        assert SECRET not in shown and self.QUERY_SECRET not in shown
+
+    def test_repeated_parameters_are_all_hidden(self):
+        shown = safe_url("postgresql://u@h/db?password=First-Secret&password=Second-Secret")
+        assert "First-Secret" not in shown and "Second-Secret" not in shown
+
+    def test_a_url_object_is_handled_too(self):
+        shown = safe_url(make_url(f"postgresql+psycopg://u@h/db?password={self.QUERY_SECRET}"))
+        assert self.QUERY_SECRET not in shown
+
+    def test_urls_without_secrets_are_unchanged(self):
+        url = "postgresql+psycopg://u@h:5432/db?connect_timeout=3&sslmode=require"
+        assert safe_url(url) == url
+        assert safe_url("sqlite:///data/x.db") == "sqlite:///data/x.db"
+
+    def test_redact_secrets_removes_the_query_password_from_text(self):
+        text = f"could not connect with password={self.QUERY_SECRET} to host"
+        redacted = redact_secrets(text, self.URL)
+        assert self.QUERY_SECRET not in redacted and "password=***" in redacted
+
+    def test_redact_secrets_with_a_url_object(self):
+        parsed = make_url(f"postgresql+psycopg://u@h/db?sslpassword={self.QUERY_SECRET}")
+        assert self.QUERY_SECRET not in redact_secrets(f"failed: {self.QUERY_SECRET}", parsed)
+
+    def test_a_very_short_query_password_is_not_replaced_in_text(self):
+        # Όπως και ο κωδικός του userinfo: ένα πολύ μικρό «a» θα κατέστρεφε το κείμενο.
+        assert redact_secrets("a b a", "postgresql://u@h/db?password=a") == "a b a"

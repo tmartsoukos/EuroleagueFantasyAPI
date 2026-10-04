@@ -26,6 +26,10 @@ _PASSWORD_IN_URL = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@]*:([^@]*)@")
 
 _DEFAULT_POSTGRES_PORT = 5432
 
+# Παράμετροι του query (`?password=...`) που κρύβουν κωδικό. Το libpq δέχεται τον κωδικό και ως
+# παράμετρο του URL, και η SQLAlchemy τον προωθεί αυτούσιο: το `hide_password` δεν τον πιάνει.
+_SECRET_QUERY_KEYS = frozenset({"password", "sslpassword", "passphrase"})
+
 
 class DatabaseUrlError(ValueError):
     """Άκυρο URL βάσης. Το μήνυμα δεν περιέχει ποτέ το URL (μπορεί να έχει κωδικό)."""
@@ -64,9 +68,35 @@ def safe_url(url: str | URL | None) -> str:
         return "<none>"
     try:
         parsed = url if isinstance(url, URL) else make_url(normalize_database_url(url))
-        return parsed.render_as_string(hide_password=True)
+        return (
+            _mask_query_secrets(parsed)
+            .render_as_string(hide_password=True)
+            .replace("%2A%2A%2A", "***")
+        )
     except Exception:
         return "<invalid database URL>"
+
+
+def _query_secrets(parsed: URL) -> set[str]:
+    """Οι τιμές κωδικού που βρίσκονται στο query του URL (π.χ. `?password=...`)."""
+    found: set[str] = set()
+    for key, value in parsed.query.items():
+        if key.lower() in _SECRET_QUERY_KEYS:
+            found.update(value if isinstance(value, tuple) else (value,))
+    return {item for item in found if item}
+
+
+def _mask_query_secrets(parsed: URL) -> URL:
+    """Αντιγράφει το URL με `***` στις παραμέτρους query που κρύβουν κωδικό."""
+    if not _query_secrets(parsed):
+        return parsed
+    query = {
+        key: (("***",) * len(value) if isinstance(value, tuple) else "***")
+        if key.lower() in _SECRET_QUERY_KEYS
+        else value
+        for key, value in parsed.query.items()
+    }
+    return parsed.set(query=query)
 
 
 def backend_name(url: str | URL) -> str:
@@ -128,7 +158,9 @@ def _password_candidates(url: str) -> set[str]:
     SQLAlchemy και όπως γράφτηκε (με percent-encoding) στο URL."""
     candidates: set[str] = set()
     try:
-        password = make_url(normalize_database_url(url)).password
+        parsed = make_url(normalize_database_url(url))
+        password = parsed.password
+        candidates |= _query_secrets(parsed)
     except Exception:
         password = None
     if password:
@@ -153,6 +185,7 @@ def redact_secrets(text: str, *urls: str | URL | None) -> str:
         if isinstance(url, URL):
             if url.password and len(url.password) >= _MIN_REDACTED_LENGTH:
                 secrets.add(url.password)
+            secrets |= {s for s in _query_secrets(url) if len(s) >= _MIN_REDACTED_LENGTH}
             continue
         secrets |= _password_candidates(url)
     # Πρώτα τα μεγαλύτερα, ώστε ένας κωδικός που περιέχει έναν άλλον να αντικαθίσταται ολόκληρος.

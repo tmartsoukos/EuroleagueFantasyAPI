@@ -56,8 +56,9 @@ push (κάθε branch εκτός από το badges) ή pull request
 
 1. **Χωρίς secret:** το job τελειώνει **επιτυχώς** με μήνυμα στο summary «deploy skipped: secret not configured». Έτσι το CI δεν «κοκκινίζει» πριν στηθεί το Render.
 2. **Με secret:** `curl --fail-with-body -sS -X POST` προς το hook, με έως 3 προσπάθειες (αναμονή 10 και 20 s). Τα σφάλματα του client (401 λάθος hook, 404 άγνωστη υπηρεσία, 409 ανεσταλμένη υπηρεσία) δεν επαναλαμβάνονται. Το URL **δεν τυπώνεται ποτέ**: κρύβεται ρητά με `::add-mask::` (και το URL και η μορφή του με το `ref`), δεν υπάρχει `set -x` και τα μηνύματα του curl δεν το περιέχουν.
-3. Το hook καλείται με `ref=<SHA του commit>`: το Render κάνει deploy **ακριβώς του commit που πέρασε τους ελέγχους** και όχι «ό,τι είναι τελευταίο στο branch» (αν είχε προλάβει να γίνει νεότερο push, δεν θα έφευγε στην παραγωγή αδοκίμαστο).
-4. **Smoke check** (αν υπάρχει το repository variable `RENDER_SERVICE_URL`, αλλιώς παραλείπεται με μήνυμα): `scripts/smoke_check.py` ρωτά το `<url>/health` με backoff (5 s, ×1,5, έως 30 s) μέχρι 15 λεπτά και απαιτεί HTTP 200, `"status": "ok"` **και** `commit` ίσο με το SHA του deploy. Αποτυχία = αποτυχία του job, με την τελευταία απάντηση στο log και στο summary.
+3. **Φύλακας ξεπερασμένου commit.** Πριν καλέσει το hook, το job ελέγχει με `git ls-remote` ότι το commit του είναι ακόμη το κεφάλι του `main`. Τα jobs `test` δύο διαδοχικών pushes τρέχουν παράλληλα και μπορεί να τελειώσουν με ανάποδη σειρά: χωρίς τον έλεγχο το παλαιότερο commit θα έκανε deploy **μετά** το νεότερο και θα το αντικαθιστούσε. Αν το `main` έχει προχωρήσει, το job τελειώνει επιτυχώς με μήνυμα «deploy skipped: superseded by a newer commit» (το νεότερο push έχει δικό του run). Αν το `main` δεν διαβάζεται, το deploy συνεχίζει με προειδοποίηση.
+4. Το hook καλείται με `ref=<SHA του commit>`: το Render κάνει deploy **ακριβώς του commit που πέρασε τους ελέγχους** και όχι «ό,τι είναι τελευταίο στο branch» (αν είχε προλάβει να γίνει νεότερο push, δεν θα έφευγε στην παραγωγή αδοκίμαστο).
+5. **Smoke check** (αν υπάρχει το repository variable `RENDER_SERVICE_URL`, αλλιώς παραλείπεται με μήνυμα): `scripts/smoke_check.py` ρωτά το `<url>/health` με backoff (5 s, ×1,5, έως 30 s) μέχρι 15 λεπτά και απαιτεί HTTP 200, `"status": "ok"` **και** `commit` ίσο με το SHA του deploy. Αποτυχία = αποτυχία του job, με την τελευταία απάντηση στο log και στο summary.
 
 **Γιατί ο smoke check απαιτεί το `commit`.** Το Render χτίζει τη νέα έκδοση ενώ η παλιά εξακολουθεί να εξυπηρετεί αιτήματα (αναβάθμιση χωρίς διακοπή), και αν η νέα δεν περάσει το health check, ακυρώνει το deploy και κρατά την παλιά. Ένας έλεγχος που περιμένει απλώς `status: ok` θα περνούσε αμέσως από την **παλιά** έκδοση, ακόμη κι αν το deploy αποτύχει. Γι' αυτό το `GET /health` δηλώνει πλέον το `commit` (από την `RENDER_GIT_COMMIT` που ορίζει το Render, `docs/API.md` ενότητα 5.1) και ο έλεγχος περιμένει να δει το νέο. Αν η υπηρεσία δεν δηλώνει commit (`null`), ο έλεγχος περνά με ρητή σημείωση ότι δεν μπορεί να επιβεβαιώσει την έκδοση.
 
@@ -125,7 +126,7 @@ python -c "from urllib.parse import quote; print(quote(input('κωδικός: ')
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Βάλ' την στο πεδίο `ADMIN_API_KEY` του Render και κράτησέ την σε password manager: την ίδια τιμή θα στέλνεις στο header `X-API-Key` για τα `POST /availability`, `DELETE /availability/{player_id}` και `POST /admin/refresh`. Αν μείνει κενή, τα endpoints αυτά απαντούν 503 (είναι κλειστά, ποτέ ανοιχτά).
+Η τιμή πρέπει να έχει **τουλάχιστον 24 χαρακτήρες** (το παραπάνω δίνει 43)· πιο σύντομο κλειδί αφήνει τα endpoints κλειστά (503) και το startup γράφει σφάλμα στο log. Βάλ' την στο πεδίο `ADMIN_API_KEY` του Render και κράτησέ την σε password manager: την ίδια τιμή θα στέλνεις στο header `X-API-Key` για τα `POST /availability`, `DELETE /availability/{player_id}` και `POST /admin/refresh`. Αν μείνει κενή, τα endpoints αυτά απαντούν 503 (είναι κλειστά, ποτέ ανοιχτά).
 
 ### Βήμα 4. Το Deploy Hook ως GitHub secret
 
@@ -251,9 +252,9 @@ curl -s https://euroleague-fantasy-api.onrender.com/health
 
 ## 9. Τι δεν έχει επαληθευτεί
 
-Πριν το πρώτο πραγματικό run στο GitHub και το πρώτο deploy στο Render **δεν μπορούν** να επιβεβαιωθούν:
+**Το πρώτο πραγματικό run του CI στο GitHub** (run 37165132621, commit `4ca34b0`, 2026-10-04) **πέρασε εξ ολοκλήρου**: `lint` 8 s, `test` 4 λεπτά και 49 s (1.964 passed και 1 skipped σε Linux με Python 3.12 και πραγματικό service container `postgres:17`, coverage 99,06%), `quality-gate` 9 tests (MAE 5,9088), `coverage-badge` (το `coverage.svg` δημοσιεύτηκε στο branch `badges` και το raw URL απαντά 200) και `deploy` που παραλείφθηκε ομαλά, γιατί δεν υπήρχε το secret. Άρα επιβεβαιώθηκαν στην πράξη τα δικαιώματα `contents: write` για το badge, το image `postgres:17`, οι service containers και η αυτόματη δημιουργία του environment `production`. Το `deploy` με πραγματικό hook **δεν έχει εκτελεστεί ακόμη**.
 
-* **GitHub Actions:** η πραγματική συμπεριφορά των runners (χρόνος, cache του pip), το image `postgres:17` (η προσομοίωση χρησιμοποίησε PostgreSQL 18.4 ως τοπικό server), η σύνδεση των service containers, τα δικαιώματα `contents: write` του `GITHUB_TOKEN` για push στο `badges` (εξαρτάται από τη ρύθμιση *Settings → Actions → General → Workflow permissions* του repo· το job δηλώνει ρητά το δικαίωμα), η αυτόματη δημιουργία του environment `production`, η προσωρινή αποθήκευση (cache) του raw.githubusercontent.com για το badge (μέχρι λίγα λεπτά καθυστέρηση).
+Πριν το πρώτο deploy στο Render **δεν μπορούν** να επιβεβαιωθούν:
 * **Render:** ότι το `render.yaml` γίνεται δεκτό από το dashboard (ελέγχθηκε μόνο με ανάγνωση της τεκμηρίωσης και του JSON schema που δημοσιεύει το Render, όχι με offline validator), ότι η `PYTHON_VERSION=3.12.12` είναι διαθέσιμη, ότι το Deploy Hook δέχεται την παράμετρο `ref` για υπηρεσία χωρίς αυτόματο deploy και ότι το `RENDER_GIT_COMMIT` ισούται με αυτό το `ref` (και οι δύο τεκμηριώνονται από το Render), η διάρκεια του build (η εγκατάσταση κατεβάζει ~490 MB wheels, από τα οποία τα 305 MB είναι το `nvidia-nccl-cu13`, εξάρτηση του xgboost για πολλαπλές GPU που η υπηρεσία δεν χρησιμοποιεί· το xgboost το ίδιο είναι 58 MB), ο χρόνος εκκίνησης με 0,1 CPU και η πραγματική κατανάλωση μνήμης.
 * **Συνδυασμός Render και Supabase:** ότι το session pooler δουλεύει με το `sslmode=require` και τον ρόλο `postgres.<ref>` από το Render (δεν δοκιμάστηκε σε pooler, `docs/DATABASE.md`, ενότητα 13).
 

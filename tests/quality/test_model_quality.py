@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from gate_support import check_out_of_sample
 
 from elfantasy.config import get_settings
 from elfantasy.features.build import FEATURE_COLUMNS
@@ -95,11 +96,11 @@ def test_the_mae_is_below_the_threshold(predictions, holdout):
 
 
 def test_the_mae_agrees_with_the_recorded_metrics(predictions, holdout, metrics):
-    frame, _ = holdout
+    frame, meta = holdout
     protocol = metrics["protocol"]
     assert len(frame) == protocol["test"]["rows"]
-    if not protocol["test_mae_is_out_of_sample"]:
-        pytest.skip("the artifact was refit through the test season: MAE is not comparable")
+    # ΟΧΙ skip: ένα artifact που είδε τη σεζόν του fixture θα περνούσε το gate με in-sample νούμερα.
+    check_out_of_sample(metrics, meta["test_season"])
     fantasy = mae(frame["fantasy_score"], predictions["fantasy"])
     pir = mae(frame["pir"], predictions["pir"])
     assert fantasy == pytest.approx(metrics["fantasy"]["test"]["mae"], abs=TOLERANCE)
@@ -144,10 +145,7 @@ def test_the_embedded_metrics_equal_the_metrics_file(metrics):
 
 def test_the_artifact_was_not_trained_on_the_fixture_season(metrics, holdout):
     _, meta = holdout
-    protocol = metrics["protocol"]
-    assert protocol["test"]["season"] == meta["test_season"]
-    if protocol["test_mae_is_out_of_sample"]:
-        assert max(protocol["final_fit"]["seasons"]) < meta["test_season"]
+    check_out_of_sample(metrics, meta["test_season"])
 
 
 def test_the_predictions_are_finite_and_plausible(predictions):

@@ -387,6 +387,22 @@ class AvailabilityIn(ApiModel):
             return value.strip() or None
         return value
 
+    @field_validator("source", "note")
+    @classmethod
+    def _storable_text(cls, value: str | None) -> str | None:
+        # Το Postgres δεν δέχεται τον χαρακτήρα NUL σε πεδία text (psycopg.DataError → 503) και
+        # ένα μόνο surrogate (π.χ. "\ud800" από JSON) δεν κωδικοποιείται σε UTF-8 (→ 500). Τα δύο
+        # απορρίπτονται εδώ με 422, για κάθε βάση (στην SQLite θα αποθηκευόταν σιωπηλά σκουπίδι).
+        if value is None:
+            return value
+        if "\x00" in value:
+            raise ValueError("must not contain the NUL character")
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("must be valid Unicode text (no lone surrogates)") from None
+        return value
+
     @field_validator("expected_return", mode="before")
     @classmethod
     def _iso_date_only(cls, value):
