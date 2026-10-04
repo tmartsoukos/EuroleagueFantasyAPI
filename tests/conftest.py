@@ -21,9 +21,11 @@ import pandas as pd
 import pytest
 from api_support import REAL_TODAY, FakeClock, make_settings, noon_utc
 from pg_support import (
+    ForbidSilentPostgresSkips,
     PostgresServer,
     create_database,
     drop_database,
+    is_disposable,
     is_local_url,
     require_postgres,
 )
@@ -333,6 +335,12 @@ def _postgres_unavailable(reason: str):
     pytest.skip(reason)
 
 
+def pytest_configure(config):
+    """Με ELFANTASY_REQUIRE_POSTGRES=1 (στο CI) κάθε test με marker `postgres` που παραλείπεται, για
+    οποιονδήποτε λόγο, αποτυγχάνει ολόκληρη την εκτέλεση (βλ. `ForbidSilentPostgresSkips`)."""
+    config.pluginmanager.register(ForbidSilentPostgresSkips(), "forbid-silent-postgres-skips")
+
+
 @pytest.fixture(scope="session")
 def postgres_server(tmp_path_factory) -> Iterator[PostgresServer]:
     """Ένας τοπικός server Postgres για τα tests που τον χρειάζονται (βλ. `tests/pg_support.py`).
@@ -347,7 +355,7 @@ def postgres_server(tmp_path_factory) -> Iterator[PostgresServer]:
                 "TEST_DATABASE_URL does not point to a local server: the tests never connect "
                 "to remote databases"
             )
-        yield PostgresServer(normalize_database_url(configured), embedded=False)
+        yield PostgresServer(normalize_database_url(configured), disposable=is_disposable())
         return
     try:
         import pixeltable_pgserver
@@ -363,7 +371,7 @@ def postgres_server(tmp_path_factory) -> Iterator[PostgresServer]:
     except Exception as exc:
         _postgres_unavailable(f"the embedded PostgreSQL could not start ({type(exc).__name__})")
     try:
-        yield PostgresServer(normalize_database_url(server.get_uri()), embedded=True)
+        yield PostgresServer(normalize_database_url(server.get_uri()), disposable=True)
     finally:
         server.cleanup()
 

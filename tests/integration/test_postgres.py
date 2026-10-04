@@ -308,10 +308,13 @@ class TestMigrations:
     def test_the_supabase_roles_lose_all_access(self, postgres_server, pg_engine):
         """Μιμείται το Supabase: οι ρόλοι anon και authenticated παίρνουν δικαιώματα σε κάθε νέο
         πίνακα. Μετά τα migrations δεν έχουν κανένα, και το RLS δίνει «deny-all» ακόμη κι αν τους
-        ξαναδοθεί δικαίωμα. Μόνο στον ενσωματωμένο server: οι ρόλοι ανήκουν στο cluster."""
-        if not postgres_server.embedded:
+        ξαναδοθεί δικαίωμα. Μόνο σε προσωρινό server (ο ενσωματωμένος, ή ο server του
+        TEST_DATABASE_URL με ELFANTASY_PG_DISPOSABLE=1, όπως το service container του CI): οι
+        ρόλοι ανήκουν στο cluster."""
+        if not postgres_server.disposable:
             pytest.skip(
-                "δημιουργεί ρόλους σε επίπεδο server: μόνο στον προσωρινό ενσωματωμένο server"
+                "δημιουργεί ρόλους σε επίπεδο server: μόνο σε προσωρινό server (ο ενσωματωμένος ή "
+                "ELFANTASY_PG_DISPOSABLE=1)"
             )
         admin = create_engine(postgres_server.admin_url, isolation_level="AUTOCOMMIT")
         roles = ("anon", "authenticated")

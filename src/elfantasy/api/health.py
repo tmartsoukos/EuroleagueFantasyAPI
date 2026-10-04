@@ -93,11 +93,13 @@ def build_health(state: AppState) -> HealthResponse:
     else:
         problems.setdefault("database", PROBLEM_DATABASE)
 
+    commit = state.settings.git_commit.strip() if state.settings is not None else ""
     return HealthResponse(
         status="degraded" if problems else "ok",
         model=model,
         database=database,
         data_age_days=data_age_days,
         data_loaded_through=None if state.service is None else state.service.loaded_through,
+        commit=commit or None,
         problems=[f"{name}: {message}" for name, message in sorted(problems.items())],
     )

@@ -1,0 +1,86 @@
+# Ακριβείς εκδόσεις όλων των πακέτων (constraints) για αναπαραγώγιμη εγκατάσταση.
+#
+# Χρήση (CI και Render):
+#   pip install -r requirements.txt -c constraints.txt        # εξαρτήσεις εκτέλεσης (Render)
+#   pip install -r requirements-dev.txt -c constraints.txt    # εξαρτήσεις ανάπτυξης και tests (CI)
+# Το αρχείο ΔΕΝ προσθέτει πακέτα: το pip το χρησιμοποιεί μόνο για να διαλέξει συγκεκριμένες εκδόσεις
+# από όσα ζητούν τα requirements*.txt. Έτσι οι εκδόσεις των xgboost, numpy, scipy, scikit-learn,
+# pandas, pyarrow, joblib κ.λπ. ταυτίζονται με αυτές της εκπαίδευσης του committed μοντέλου
+# (models/model.joblib, βλ. library_versions στο models/metrics.json) και το quality gate δίνει
+# τα ίδια αποτελέσματα στο CI, στο Render και στο laptop.
+#
+# Πηγή: `pip freeze --exclude-editable` στο περιβάλλον όπου εκπαιδεύτηκε το μοντέλο (Windows 11,
+# Python 3.13.2, 2026-10-04), χωρίς το ίδιο το πακέτο elfantasy (editable) και χωρίς το colorama,
+# που εγκαθίσταται μόνο στα Windows. Οι εκδόσεις ελέγχθηκαν ότι υπάρχουν ως wheels για Linux με
+# Python 3.12 (docs/DEPLOY.md, ενότητα «Αναπαραγώγιμες εκδόσεις»): μια καθαρή εγκατάσταση σε Ubuntu
+# 24.04 με Python 3.12 έδωσε ακριβώς τις ίδιες εκδόσεις, συν το nvidia-nccl-cu13 παρακάτω.
+#
+# Η γραμμή με `; sys_platform == "linux"` ισχύει μόνο σε Linux: το nvidia-nccl-cu13 είναι εξάρτηση
+# του xgboost που εγκαθίσταται μόνο εκεί (δεν υπάρχει στο περιβάλλον Windows της εκπαίδευσης). Η
+# έκδοσή του προέρχεται από την παραπάνω εγκατάσταση σε Linux και καρφώνεται για αναπαραγωγιμότητα.
+#
+# Πώς ξαναπαράγεται (από τη ρίζα του repo):
+#   1. Καθαρό venv: python -m venv .venv-lock
+#   2. .venv-lock/Scripts/python.exe -m pip install -r requirements-dev.txt
+#   3. .venv-lock/Scripts/python.exe -m pip freeze --exclude-editable   (αφαίρεσε το colorama)
+#   4. Αντικατέστησε τις γραμμές εκδόσεων παρακάτω και κράτησε αυτό το σχόλιο.
+#   5. Έλεγξε σε Linux (π.χ. WSL ή το CI) με Python 3.12: pip install -r requirements-dev.txt -c
+#      constraints.txt && pip freeze, και πρόσθεσε στο τέλος τα πακέτα που εμφανίζονται μόνο εκεί.
+# Αν αλλάξει η έκδοση των numpy, scipy, scikit-learn, pandas ή xgboost, ξαναεκπαίδευσε το μοντέλο
+# (python -m elfantasy.model.train) και κάνε commit μαζί το νέο constraints.txt και το νέο artifact.
+# Ένα test (tests/unit/test_ci_config.py) ελέγχει ότι οι εκδόσεις εδώ ταυτίζονται με του μοντέλου.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+certifi==2026.7.22
+charset-normalizer==3.5.2
+click==8.5.0
+cloudpickle==3.1.2
+coverage==7.16.2
+euroleague_api==0.1.1
+fastapi==0.142.2
+fasteners==0.20
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+iniconfig==2.3.0
+joblib==1.6.0
+narwhals==2.26.0
+numpy==2.5.3
+nvidia-nccl-cu13==2.32.3; sys_platform == "linux"
+opentelemetry-api==1.45.0
+packaging==26.3
+pandas==3.0.6
+pixeltable-pgserver==0.6.0
+platformdirs==4.12.2
+pluggy==1.6.0
+psutil==7.2.2
+psycopg==3.3.6
+psycopg-binary==3.3.6
+pyarrow==25.0.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+pydantic_core==2.46.5
+Pygments==2.21.0
+pytest==9.1.1
+pytest-cov==7.1.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+PyYAML==6.0.3
+requests==2.34.2
+ruff==0.16.10
+scikit-learn==1.9.1
+scipy==1.18.1
+six==1.17.0
+SQLAlchemy==2.1.3
+starlette==1.7.0
+threadpoolctl==3.7.0
+tqdm==4.70.1
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2026.4
+urllib3==2.8.0
+uvicorn==0.54.0
+xgboost==3.4.1
+xmltodict==1.0.4

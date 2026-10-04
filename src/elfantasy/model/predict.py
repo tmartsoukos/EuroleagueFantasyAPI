@@ -310,6 +310,8 @@ class Predictor:
         upcoming = self._upcoming_rows(as_of)
         frame = build_features(self._history, upcoming, games=self._games)
         rows = frame[frame["is_upcoming"]].reset_index(drop=True)
+        # Μνήμη: μόνο οι γραμμές των επόμενων αγώνων χρειάζονται από εδώ και πέρα.
+        del frame, upcoming
         predictions = self._bundle.predict(rows)
         active = self._active_ids(as_of)
         columns = self._bundle.feature_columns

@@ -16,19 +16,60 @@ from sqlalchemy import Engine, select
 
 from elfantasy.db.models import games, player_games, players
 
+#: Σειρές ανά τμήμα στην ανάγνωση του ιστορικού (βλ. `read_in_chunks`).
+HISTORY_CHUNK_ROWS = 5_000
+
 
 def _to_datetime_ns(series: pd.Series) -> pd.Series:
     """Μετατρέπει στήλη ημερομηνιών/ωρών σε `datetime64[ns]` (το pandas 3 δίνει s ή us)."""
     return pd.to_datetime(series).astype("datetime64[ns]")
 
 
-def load_history(engine: Engine) -> pd.DataFrame:
+def _restore_dtype(column: pd.Series, template: object) -> pd.Series:
+    """Επαναφέρει τον τύπο μιας στήλης που έγινε `object` επειδή κάποιο τμήμα ήταν όλο NULL."""
+    if isinstance(template, pd.StringDtype):
+        return column.astype("str")
+    if pd.api.types.is_numeric_dtype(template) and not pd.api.types.is_bool_dtype(template):
+        return pd.to_numeric(column)
+    if pd.api.types.is_datetime64_any_dtype(template):
+        return pd.to_datetime(column)
+    return column
+
+
+def read_in_chunks(statement, connection, chunk_rows: int = HISTORY_CHUNK_ROWS) -> pd.DataFrame:
+    """Ίδιο αποτέλεσμα με `pd.read_sql(statement, connection)`, με ανάγνωση σε τμήματα.
+
+    Μνήμη: το `read_sql` μετατρέπει ΟΛΕΣ τις γραμμές σε αντικείμενα Python πριν φτιάξει τις στήλες
+    (για το ιστορικό περίπου 100 MB προσωρινά, ενώ το τελικό frame είναι 9 MB). Με τμήματα τα
+    αντικείμενα Python ζουν μόνο για `chunk_rows` γραμμές τη φορά (περίπου 30 MB προσωρινά).
+
+    Οι τύποι και οι τιμές του αποτελέσματος είναι ίδιοι με της ανάγνωσης χωρίς τμήματα. Η μόνη
+    διαφορά που θα μπορούσε να προκύψει: όταν ένα ολόκληρο τμήμα είναι NULL σε μια στήλη, το pandas
+    του δίνει τύπο `object` και η ένωση των τμημάτων θα έμενε `object`· τότε η στήλη μετατρέπεται
+    στον τύπο που έχουν τα υπόλοιπα τμήματα (κείμενο, αριθμός ή ημερομηνία).
+    """
+    chunks = list(pd.read_sql(statement, connection, chunksize=chunk_rows))
+    if not chunks:  # το pandas δεν δίνει κανένα τμήμα για αποτέλεσμα χωρίς γραμμές
+        return pd.read_sql(statement, connection)
+    if len(chunks) == 1:
+        return chunks[0]
+    frame = pd.concat(chunks, ignore_index=True)
+    for name in frame.columns:
+        if frame[name].dtype == object:
+            typed = [chunk[name].dtype for chunk in chunks if chunk[name].dtype != object]
+            if typed:
+                frame[name] = _restore_dtype(frame[name], typed[0])
+    return frame
+
+
+def load_history(engine: Engine, chunk_rows: int = HISTORY_CHUNK_ROWS) -> pd.DataFrame:
     """Επιστρέφει το ιστορικό: `player_games` ⨝ `games` για τους παιγμένους αγώνες.
 
     Μία γραμμή ανά (παίκτης, αγώνας), συμπεριλαμβανομένων των γραμμών DNP. Στήλες:
     `season, gamecode, player_id, team_code, opp_code, home, is_starter, minutes, dnp, pir,
     fantasy_score, won, game_date, tipoff_utc, phase, team_score, opp_score`. Τα `team_score` και
-    `opp_score` είναι το σκορ της ομάδας του παίκτη και του αντιπάλου (από το `games`).
+    `opp_score` είναι το σκορ της ομάδας του παίκτη και του αντιπάλου (από το `games`). Η ανάγνωση
+    γίνεται σε τμήματα `chunk_rows` γραμμών (μικρότερη κατανάλωση μνήμης, ίδιο αποτέλεσμα).
     """
     on_game = (player_games.c.season == games.c.season) & (
         player_games.c.gamecode == games.c.gamecode
@@ -57,7 +98,7 @@ def load_history(engine: Engine) -> pd.DataFrame:
         .where(games.c.played.is_(True))
     )
     with engine.connect() as connection:
-        frame = pd.read_sql(statement, connection)
+        frame = read_in_chunks(statement, connection, chunk_rows)
     frame["game_date"] = _to_datetime_ns(frame["game_date"])
     frame["tipoff_utc"] = _to_datetime_ns(frame["tipoff_utc"])
     home = frame["home"].astype(bool)

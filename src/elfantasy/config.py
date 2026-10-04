@@ -8,6 +8,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from elfantasy.db.urls import safe_url
@@ -33,6 +34,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         protected_namespaces=(),
+        # Το `git_commit` διαβάζεται από άλλα ονόματα μεταβλητών (βλ. παρακάτω)· τα tests το δίνουν
+        # και με το όνομα του πεδίου.
+        validate_by_name=True,
+        validate_by_alias=True,
     )
 
     # Σύνδεση στη βάση: SQLite τοπικά, Postgres (Supabase, session pooler) στην παραγωγή
@@ -48,6 +53,12 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     # Φάκελος δεδομένων: raw cache, αναφορές και logs.
     data_dir: str = "data"
+    # Το commit (SHA) του κώδικα που τρέχει. Το Render το ορίζει μόνο του ως `RENDER_GIT_COMMIT`·
+    # τοπικά μένει κενό. Εμφανίζεται στο `GET /health`, ώστε το CI να επιβεβαιώνει μετά από ένα
+    # deploy ότι απαντά η ΝΕΑ έκδοση και όχι η παλιά (scripts/smoke_check.py, docs/DEPLOY.md).
+    git_commit: str = Field(
+        default="", validation_alias=AliasChoices("RENDER_GIT_COMMIT", "GIT_COMMIT")
+    )
 
     def __repr_args__(self):
         """Η αναπαράσταση (`repr`, `str`) κρύβει τον κωδικό της βάσης και το κλειδί διαχειριστή:

@@ -6,7 +6,15 @@ import pytest
 
 from elfantasy.config import DEFAULT_MAE_THRESHOLD, Settings, get_settings
 
-VARIABLES = ("DATABASE_URL", "MODEL_PATH", "MAE_THRESHOLD", "ADMIN_API_KEY", "DATA_DIR")
+VARIABLES = (
+    "DATABASE_URL",
+    "MODEL_PATH",
+    "MAE_THRESHOLD",
+    "ADMIN_API_KEY",
+    "DATA_DIR",
+    "RENDER_GIT_COMMIT",
+    "GIT_COMMIT",
+)
 
 
 @pytest.fixture
@@ -54,6 +62,26 @@ def test_values_are_read_from_a_dotenv_file_and_the_environment_wins(
     assert settings.mae_threshold == 3.5
     monkeypatch.setenv("MAE_THRESHOLD", "9")
     assert Settings().mae_threshold == 9.0
+
+
+def test_the_commit_is_empty_by_default(clean_environment):
+    assert Settings().git_commit == ""
+
+
+def test_the_commit_is_read_from_the_render_variable_first(clean_environment, monkeypatch):
+    monkeypatch.setenv("GIT_COMMIT", "generic0")
+    assert Settings().git_commit == "generic0"
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "render01")
+    assert Settings().git_commit == "render01"  # η μεταβλητή του Render προηγείται
+
+
+def test_the_commit_can_also_be_given_by_the_field_name(clean_environment):
+    assert Settings(_env_file=None, git_commit="deadbeef").git_commit == "deadbeef"
+
+
+def test_the_commit_can_come_from_the_dotenv_file(clean_environment):
+    (clean_environment / ".env").write_text("RENDER_GIT_COMMIT=fromdotenv\n", encoding="utf-8")
+    assert Settings().git_commit == "fromdotenv"
 
 
 def test_derived_folders(clean_environment, monkeypatch):

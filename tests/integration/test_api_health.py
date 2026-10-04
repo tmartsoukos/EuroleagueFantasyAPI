@@ -30,6 +30,13 @@ from elfantasy.model.predict import Predictor
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def no_commit_variables(monkeypatch):
+    """Οι μεταβλητές του commit (π.χ. στο Render) δεν επηρεάζουν τα tests."""
+    monkeypatch.delenv("RENDER_GIT_COMMIT", raising=False)
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+
+
 def database_url(engine) -> str:
     return engine.url.render_as_string(hide_password=False)
 
@@ -58,6 +65,43 @@ class TestHealthOk:
         # Το ρολόι των tests είναι η ημέρα μετά τον τελευταίο αγώνα.
         assert body["data_age_days"] == 1
         assert body["data_loaded_through"] == synthetic_league.last_played_date.isoformat()
+
+    def test_the_commit_is_null_when_the_platform_does_not_report_one(self, client):
+        assert client.get("/health").json()["commit"] is None
+
+    @pytest.mark.parametrize("reported", [" 9a94d7d0e5b6c1f2a3b4c5d6e7f8091a2b3c4d5e\n", "abc1234"])
+    def test_the_commit_of_the_deployment_is_reported(
+        self, api_engine, api_predictor, api_clock, reported
+    ):
+        """Στο Render: `RENDER_GIT_COMMIT`. Το CI περιμένει να το δει στο /health μετά το deploy."""
+        settings = make_settings(git_commit=reported)
+        app = create_app(
+            settings=settings, engine=api_engine, predictor=api_predictor, clock=api_clock
+        )
+        with TestClient(app) as test_client:
+            body = test_client.get("/health").json()
+        assert body["status"] == "ok"
+        assert body["commit"] == reported.strip()
+
+    def test_an_empty_commit_is_null(self, api_engine, api_predictor, api_clock):
+        settings = make_settings(git_commit="   ")
+        app = create_app(
+            settings=settings, engine=api_engine, predictor=api_predictor, clock=api_clock
+        )
+        with TestClient(app) as test_client:
+            assert test_client.get("/health").json()["commit"] is None
+
+    def test_the_commit_is_read_from_the_environment_of_the_platform(
+        self, api_engine, api_predictor, api_clock, monkeypatch
+    ):
+        monkeypatch.setenv("RENDER_GIT_COMMIT", "feedface0123456789feedface0123456789abcd")
+        app = create_app(
+            settings=make_settings(), engine=api_engine, predictor=api_predictor, clock=api_clock
+        )
+        with TestClient(app) as test_client:
+            assert test_client.get("/health").json()["commit"] == (
+                "feedface0123456789feedface0123456789abcd"
+            )
 
     def test_head_requests_get_the_same_status_for_monitors(self, client, api_clock, monkeypatch):
         assert client.head("/health").status_code == 200
@@ -134,6 +178,17 @@ class TestDegraded:
             # η διαθεσιμότητα χρειάζεται μόνο τη βάση
             assert client.get("/availability").status_code == 200
         assert "missing-model" in caplog.text  # η λεπτομέρεια γράφεται μόνο στο log του server
+
+    def test_a_degraded_service_still_reports_its_commit(self, api_engine, tmp_path):
+        """Στο CI το `commit` διαβάζεται και από απάντηση 503 (το μήνυμα αποτυχίας το δείχνει)."""
+        missing = tmp_path / "missing-model.joblib"
+        settings = make_settings(
+            database_url=database_url(api_engine), model_path=str(missing), git_commit="abc1234"
+        )
+        with self.run(settings) as client:
+            response = client.get("/health")
+        assert response.status_code == 503
+        assert response.json()["commit"] == "abc1234"
 
     def test_a_corrupt_model_is_degraded(self, api_engine, tmp_path):
         broken = tmp_path / "model.joblib"

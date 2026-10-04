@@ -1,0 +1,51 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec): μία web υπηρεσία στο free plan.
+# Οδηγίες βήμα-βήμα (δημιουργία από το Blueprint, μυστικά, deploy hook): docs/DEPLOY.md.
+#
+# ΜΗΝ γράψεις εδώ μυστικά. Οι τιμές με `sync: false` δεν ανήκουν στο repo: το Render τις ζητά μία
+# φορά στο dashboard κατά τη δημιουργία της υπηρεσίας.
+services:
+  - type: web
+    name: euroleague-fantasy-api
+    runtime: python
+    # Φρανκφούρτη: κοντά στο Supabase (eu-central-1).
+    region: frankfurt
+    plan: free
+    branch: main
+    # Το deploy ΔΕΝ ξεκινά από κάθε commit. Το κάνει το CI (GitHub Actions, job `deploy`) μέσω του
+    # Deploy Hook, αφού περάσουν lint, tests και quality gate. (Το `autoDeployTrigger: off` είναι
+    # η σημερινή μορφή του παλαιότερου `autoDeploy: false`.)
+    autoDeployTrigger: "off"
+    # Το /health απαντά 200 μόνο όταν η βάση και το μοντέλο δουλεύουν, αλλιώς 503: μια νέα έκδοση
+    # που δεν ξεκινά σωστά δεν αντικαθιστά την παλιά και μια υπηρεσία που χαλάσει ξαναξεκινά.
+    healthCheckPath: /health
+    # Οι εκδόσεις των πακέτων είναι οι ίδιες με της εκπαίδευσης του μοντέλου (constraints.txt). Το
+    # `pip install --no-deps .` εγκαθιστά το πακέτο elfantasy (μαζί με τα migrations SQL).
+    buildCommand: pip install -r requirements.txt -c constraints.txt && pip install --no-deps .
+    # ΕΝΑΣ worker, ρητά: ο Predictor και η cache των προβλέψεων ζουν μέσα στη διεργασία και το
+    # POST /admin/refresh ανανεώνει μόνο τη διεργασία που το δέχεται (docs/API.md, ενότητα 11).
+    # Το uvicorn διαβάζει αλλιώς τη μεταβλητή WEB_CONCURRENCY, που το Render ορίζει μόνο του.
+    startCommand: uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      # Έκδοση Python (πρέπει να είναι πλήρης, π.χ. 3.12.12). Ίδια ελάσσονα έκδοση (3.12) με το CI.
+      - key: PYTHON_VERSION
+        value: 3.12.12
+      # Supabase: η συμβολοσειρά σύνδεσης του session pooler (IPv4). Την ορίζεις στο dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Κλειδί των προστατευμένων endpoints (X-API-Key). Την ορίζεις στο dashboard.
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: MODEL_PATH
+        value: models/model.joblib
+      # Ένας worker, και για κάθε εργαλείο που διαβάζει τη μεταβλητή.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      # Μνήμη (512 MB στο free plan): λιγότερα arenas του malloc της glibc, ώστε η μνήμη που
+      # ελευθερώνεται μετά το startup και το refresh να επιστρέφει στο σύστημα (μετρήθηκε: από
+      # ~250 MB σε ~235 MB μόνιμο RSS, docs/DEPLOY.md, ενότητα «Μνήμη»).
+      - key: MALLOC_ARENA_MAX
+        value: "2"
+      # Το free plan έχει 0,1 CPU: ένα νήμα αρκεί για την πρόβλεψη 1.212 παικτών και δεν
+      # δημιουργούνται δεκάδες νήματα OpenMP που θα περίμεναν το όριο CPU.
+      - key: OMP_NUM_THREADS
+        value: "1"

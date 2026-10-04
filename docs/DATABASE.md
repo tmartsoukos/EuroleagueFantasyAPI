@@ -194,11 +194,13 @@ $env:DATABASE_URL = 'postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.poo
 Τα tests και το CI τρέχουν **πάντα σε SQLite**, offline. Επιπλέον:
 
 * **Offline (SQLite):** drift test migration ↔ models, runner (σειρά, checksum, idempotency, ατομικότητα, εκτός σειράς, ταυτόχρονη εφαρμογή), μεταφορά SQLite → SQLite με `--allow-non-postgres` (πλήθη, checksums, επαναλήψεις, ασυμφωνίες, προστασίες, τύποι), `record_predictions`, `evaluate_recorded`, ρυθμίσεις `get_engine` (pooler, `prepare_threshold`, κρυμμένοι κωδικοί), CLI ως `python -m` (υποδιεργασίες), υγιεινή του repo.
-* **Σε πραγματικό ΤΟΠΙΚΟ Postgres** (marker `postgres`, αρχείο `tests/integration/test_postgres.py`, 41 tests): migrations, σχήμα έναντι `models.py`, RLS και δικαιώματα, μεταφορά, ingestion, `Predictor`, API, καταγραφή και αξιολόγηση προβλέψεων, engine. Ο server είναι, με σειρά:
+* **Σε πραγματικό ΤΟΠΙΚΟ Postgres** (marker `postgres`, αρχείο `tests/integration/test_postgres.py`, 42 tests): migrations, σχήμα έναντι `models.py`, RLS και δικαιώματα, μεταφορά, ingestion, `Predictor`, API, καταγραφή και αξιολόγηση προβλέψεων, engine. Ο server είναι, με σειρά:
   1. το `TEST_DATABASE_URL`, αν οριστεί και δείχνει σε **τοπικό** host (`localhost`, `127.0.0.1`, `::1`, socket unix)· URL προς άλλον host **απορρίπτεται** (τα tests παραλείπονται): κανένα test δεν συνδέεται ποτέ σε remote βάση·
   2. ο ενσωματωμένος Postgres του πακέτου **`pixeltable-pgserver`** (`requirements-dev.txt`, ~30 MB, binaries μέσα στο wheel), που ξεκινά σε προσωρινό φάκελο και σταματά στο τέλος (τοπικά: PostgreSQL 18.4 σε Windows 11, εκκίνηση ~8 s στην πρώτη φορά).
 
-  Αν δεν υπάρχει καμία πηγή, τα tests παραλείπονται· με `ELFANTASY_REQUIRE_POSTGRES=1` αποτυγχάνουν (χρήσιμο στο CI, για να μη χάνεται σιωπηλά η κάλυψη). Κάθε test παίρνει δική του κενή βάση (`CREATE DATABASE` και διαγραφή στο τέλος). Εκτός: `pytest -m "not postgres"`.
+  Αν δεν υπάρχει καμία πηγή, τα tests παραλείπονται· με `ELFANTASY_REQUIRE_POSTGRES=1` αποτυγχάνουν (χρήσιμο στο CI, για να μη χάνεται σιωπηλά η κάλυψη). Με την ίδια μεταβλητή αποτυγχάνει και κάθε test με marker `postgres` που παραλείπεται για οποιονδήποτε άλλον λόγο (plugin `ForbidSilentPostgresSkips` στο `tests/pg_support.py`). Κάθε test παίρνει δική του κενή βάση (`CREATE DATABASE` και διαγραφή στο τέλος). Εκτός: `pytest -m "not postgres"`.
+
+  **Ρόλοι σε επίπεδο server.** Ένα test (`test_the_supabase_roles_lose_all_access`) μιμείται τους ρόλους `anon` και `authenticated` του Supabase και τους δημιουργεί και τους διαγράφει στο cluster. Τρέχει μόνο σε **προσωρινό** server: τον ενσωματωμένο, ή τον server του `TEST_DATABASE_URL` όταν δηλωθεί ρητά με `ELFANTASY_PG_DISPOSABLE=1`. Το ορίζει το CI (service container `postgres:17`, `docs/DEPLOY.md`), ώστε να τρέχουν και τα 42 tests· σε οποιονδήποτε άλλον server το test παραλείπεται, και μην το ορίσεις ποτέ σε server που χρησιμοποιείς για άλλη δουλειά.
 
 ## 10. Καταγραφή και αξιολόγηση προβλέψεων
 

@@ -1,0 +1,315 @@
+# CI/CD του Euroleague Fantasy Points Predictor API (λεπτομέρειες: docs/DEPLOY.md).
+#
+#   push / pull_request
+#        |
+#        +--> lint ---------+
+#        +--> test ---------+--> deploy (μόνο push στο main) --> smoke check του /health
+#        +--> quality-gate -+
+#        |
+#        +--> test --> coverage-badge (μόνο push στο main, γράφει το coverage.svg στο branch badges)
+#
+# Αρχές: ελάχιστα δικαιώματα (contents: read, και write ΜΟΝΟ στο coverage-badge), actions με
+# συγκεκριμένο major tag, timeouts ανά job, αναπαραγώγιμες εκδόσεις πακέτων (constraints.txt) και
+# κανένα μυστικό μέσα στο αρχείο: το Deploy Hook του Render ζει στο GitHub secret
+# RENDER_DEPLOY_HOOK_URL και το URL της υπηρεσίας στη μεταβλητή RENDER_SERVICE_URL.
+name: CI
+
+on:
+  push:
+    # Όλα τα branches, εκτός από το `badges` (εκεί γράφεται μόνο το coverage.svg, δεν έχει κώδικα).
+    branches-ignore:
+      - badges
+  pull_request:
+
+# Ένα run ανά ref: ένα νεότερο push στο ίδιο branch ή PR ακυρώνει το παλαιότερο. Στο main ΔΕΝ
+# ακυρώνεται ποτέ run που τρέχει, ώστε ένα deploy να μη διακόπτεται στη μέση.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash με pipefail: ένα σφάλμα στη μέση ενός pipe δεν κρύβεται.
+    shell: bash
+
+env:
+  # Η έκδοση Python του CI. Ίδια με το render.yaml (PYTHON_VERSION) και το requires-python του
+  # pyproject.toml: τα numpy 2.5, scipy 1.18 και xgboost 3.4 του constraints.txt θέλουν >= 3.12.
+  PYTHON_VERSION: "3.12"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: constraints.txt
+
+      # Μόνο το ruff, στην ίδια έκδοση με το constraints.txt (και με τα requirements-dev).
+      - name: Install ruff (version pinned in constraints.txt)
+        run: python -m pip install -c constraints.txt ruff
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # Πραγματικός Postgres για τα 42 tests με marker `postgres`. Το service container είναι
+    # προσωρινό: το TEST_DATABASE_URL δείχνει σε localhost (τα tests δέχονται μόνο τοπικό server)
+    # και ο κωδικός «postgres» είναι ο κωδικός ενός μιας χρήσεως container, όχι μυστικό.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Αντί να παραλείπονται, τα tests με marker `postgres` ΑΠΟΤΥΓΧΑΝΟΥΝ αν δεν τρέξουν.
+      ELFANTASY_REQUIRE_POSTGRES: "1"
+      # Ο server είναι προσωρινός: επιτρέπεται το test που δημιουργεί τους ρόλους anon/authenticated.
+      ELFANTASY_PG_DISPOSABLE: "1"
+    outputs:
+      coverage: ${{ steps.coverage.outputs.percent }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            constraints.txt
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies (versions pinned in constraints.txt)
+        run: |
+          python -m pip install -r requirements-dev.txt -c constraints.txt
+          python -m pip install --no-deps -e .
+          python -m pip check
+
+      # Unit και integration tests (όλα εκτός από το tests/quality, που έχει δικό του job).
+      - name: Run the tests with coverage
+        run: >-
+          python -m pytest --ignore=tests/quality -q
+          --cov=elfantasy --cov-report=xml --cov-report=term-missing --cov-fail-under=95
+
+      - name: Compute the coverage percentage (for the badge)
+        id: coverage
+        run: |
+          percent="$(python scripts/make_coverage_badge.py --xml coverage.xml --print-percent)"
+          echo "percent=${percent}" >> "$GITHUB_OUTPUT"
+          echo "### Test coverage: ${percent}%" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage.xml
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            constraints.txt
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies (versions pinned in constraints.txt)
+        run: |
+          python -m pip install -r requirements-dev.txt -c constraints.txt
+          python -m pip install --no-deps -e .
+
+      # Φορτώνει το committed models/model.joblib και το fixture tests/fixtures/holdout_2025.parquet
+      # και αποτυγχάνει αν το MAE (fantasy) δεν είναι μικρότερο από το MAE_THRESHOLD (6,00).
+      - name: Model quality gate
+        run: python -m pytest tests/quality -q
+
+      - name: Quality numbers in the job summary
+        if: ${{ !cancelled() }}
+        run: python scripts/quality_summary.py >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: deploy
+    needs: [lint, test, quality-gate]
+    # Μόνο σε push στο main (και μόνο αν πέρασαν και τα τρία jobs: το `needs` το εξασφαλίζει).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    # Ένα deploy τη φορά: το επόμενο περιμένει να τελειώσει το τρέχον (και ο smoke check του).
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      # Το μυστικό περνά στο περιβάλλον του job, ώστε τα steps να ελέγχουν `env.… != ''` (το
+      # `secrets` δεν επιτρέπεται μέσα σε `if`). Δεν τυπώνεται ποτέ.
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
+    steps:
+      - name: Deploy skipped (secret not configured)
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: |
+          {
+            echo "### deploy skipped: secret not configured"
+            echo
+            echo "The repository secret \`RENDER_DEPLOY_HOOK_URL\` is not set, so nothing was deployed."
+            echo "The checks passed. See docs/DEPLOY.md (step 4) to enable the deploy."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::deploy skipped: secret RENDER_DEPLOY_HOOK_URL is not configured"
+
+      - uses: actions/checkout@v6
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+
+      - uses: actions/setup-python@v6
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Το Deploy Hook ξεκινά deploy ΑΚΡΙΒΩΣ του commit που πέρασε τους ελέγχους (παράμετρος `ref`),
+      # όχι «του τελευταίου στο branch». Το URL δεν τυπώνεται ποτέ: κρύβεται με add-mask και τα
+      # μηνύματα του curl δεν το περιέχουν.
+      - name: Trigger the Render deploy hook
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "::add-mask::${RENDER_DEPLOY_HOOK_URL}"
+          hook="${RENDER_DEPLOY_HOOK_URL}"
+          case "${hook}" in
+            *\?*) hook="${hook}&ref=${GITHUB_SHA}" ;;
+            *) hook="${hook}?ref=${GITHUB_SHA}" ;;
+          esac
+          echo "::add-mask::${hook}"
+          response="${RUNNER_TEMP}/render-hook-response.txt"
+          attempts=3
+          accepted=0
+          for attempt in $(seq 1 "${attempts}"); do
+            if code="$(curl --fail-with-body -sS -X POST --max-time 60 -o "${response}" -w '%{http_code}' "${hook}")"; then
+              accepted=1
+              break
+            fi
+            echo "Attempt ${attempt} of ${attempts} failed (HTTP status: ${code:-none})."
+            if [ -s "${response}" ]; then head -c 500 "${response}"; echo; fi
+            # Σφάλμα του client (401: λάθος hook, 404: άγνωστη υπηρεσία ή commit, 409: η υπηρεσία
+            # έχει ανασταλεί) δεν διορθώνεται με επανάληψη· επαναλαμβάνονται τα υπόλοιπα.
+            case "${code}" in
+              408 | 429) ;;
+              4??) break ;;
+            esac
+            if [ "${attempt}" -lt "${attempts}" ]; then sleep $((attempt * 10)); fi
+          done
+          if [ "${accepted}" -ne 1 ]; then
+            echo "::error::The Render deploy hook did not accept the request (last HTTP status: ${code:-none}, attempts: ${attempt})."
+            exit 1
+          fi
+          deploy_id="$(grep -oE 'dep-[A-Za-z0-9]+' "${response}" | head -n 1 || true)"
+          {
+            echo "### Render deploy triggered"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- hook HTTP status: ${code}"
+            if [ -n "${deploy_id}" ]; then echo "- deploy: \`${deploy_id}\`"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Deploy hook accepted (HTTP ${code})."
+
+      # Στο free tier το Render «κοιμάται» και η εκκίνηση παίρνει περίπου ένα λεπτό· επιπλέον το
+      # Render χτίζει τη νέα έκδοση ενώ η παλιά εξυπηρετεί. Γι' αυτό ο έλεγχος περιμένει μέχρι 15
+      # λεπτά και απαιτεί το /health να είναι ok ΚΑΙ να δηλώνει το commit που μόλις στείλαμε.
+      - name: Post-deploy smoke check (/health)
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL != ''
+        run: >-
+          python scripts/smoke_check.py
+          --url "${RENDER_SERVICE_URL}"
+          --expect-commit "${GITHUB_SHA}"
+          --timeout-seconds 900
+
+      - name: Smoke check skipped (RENDER_SERVICE_URL not set)
+        if: env.RENDER_DEPLOY_HOOK_URL != '' && env.RENDER_SERVICE_URL == ''
+        run: |
+          {
+            echo "### Post-deploy smoke check skipped"
+            echo
+            echo "The repository variable \`RENDER_SERVICE_URL\` is not set (docs/DEPLOY.md, step 5)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::smoke check skipped: variable RENDER_SERVICE_URL is not set"
+
+  coverage-badge:
+    name: coverage-badge
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Το ΜΟΝΟ job με δικαίωμα εγγραφής: γράφει το coverage.svg στο orphan branch `badges`.
+    permissions:
+      contents: write
+    concurrency:
+      group: coverage-badge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate the badge
+        env:
+          COVERAGE: ${{ needs.test.outputs.coverage }}
+        run: python scripts/make_coverage_badge.py --percent "${COVERAGE}" --output "${RUNNER_TEMP}/coverage.svg"
+
+      # Το branch `badges` δεν έχει κώδικα (orphan) και δημιουργείται την πρώτη φορά. Το main δεν
+      # αγγίζεται ποτέ. Αν το SVG δεν άλλαξε, δεν γίνεται commit.
+      - name: Publish the badge to the badges branch
+        env:
+          COVERAGE: ${{ needs.test.outputs.coverage }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin refs/heads/badges > /dev/null; then
+            git fetch --no-tags --depth=1 origin badges
+            git checkout --quiet -B badges FETCH_HEAD
+          else
+            git checkout --quiet --orphan badges
+            git rm -rf --quiet .
+          fi
+          cp "${RUNNER_TEMP}/coverage.svg" coverage.svg
+          git add coverage.svg
+          if git diff --cached --quiet; then
+            echo "The badge did not change: nothing to commit."
+            exit 0
+          fi
+          git commit --quiet -m "Update coverage badge (${COVERAGE}%)"
+          git push origin badges
+          echo "Published coverage.svg (${COVERAGE}%) to the badges branch." >> "$GITHUB_STEP_SUMMARY"

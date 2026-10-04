@@ -17,7 +17,13 @@ ROOT = Path(__file__).resolve().parents[2]
 # Κωδικοί που επιτρέπονται σε URL μέσα στο repo: κράτηση θέσης (ΚΕΦΑΛΑΙΑ και κάτω παύλες), «***»
 # (κρυμμένος κωδικός) και οι ψεύτικες τιμές που χρησιμοποιούν τα tests και τα docs.
 PLACEHOLDER_PASSWORD = re.compile(r"^(?:[A-Z][A-Z_]*|\*{3}|p|pw|pass|password|secret|S3cr3t-Pa55)$")
-URL_WITH_PASSWORD = re.compile(r"postgres(?:ql)?(?:\+\w+)?://([^:/@\s'\"`]+):([^@\s'\"`]+)@")
+URL_WITH_PASSWORD = re.compile(
+    r"postgres(?:ql)?(?:\+\w+)?://([^:/@\s'\"`]+):([^@\s'\"`]+)@(\[[0-9a-fA-F:]+\]|[^:/?#\s'\"`]+)"
+)
+# Φάση 6: ένα URL προς τον ΤΟΠΙΚΟ server του CI (service container `postgres:17` στο ci.yml,
+# `postgresql://postgres:postgres@localhost:5432/postgres`) έχει ανώδυνο κωδικό μιας χρήσεως: δεν
+# είναι πραγματικό μυστικό. Οποιοσδήποτε άλλος host (π.χ. Supabase) πρέπει να έχει κράτηση θέσης.
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
 KEY_PATTERNS = {
     "JWT (π.χ. Supabase anon/service_role key)": re.compile(
         r"eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}"
@@ -38,6 +44,44 @@ TEXT_SUFFIXES = {
     ".json",
     ".example",
 }
+
+
+def suspicious_database_urls(text: str) -> list[str]:
+    """URL βάσης με κωδικό που δεν είναι κράτηση θέσης ούτε δείχνει σε τοπικό server."""
+    found = []
+    for match in URL_WITH_PASSWORD.finditer(text):
+        if match.group(3).lower() in LOOPBACK_HOSTS:
+            continue  # τοπικός server (π.χ. το service container του CI)
+        if not PLACEHOLDER_PASSWORD.match(match.group(2)):
+            found.append(match.group(0))
+    return found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "postgresql://postgres:postgres@localhost:5432/postgres",  # το service container του CI
+        "postgresql+psycopg://user:anything@127.0.0.1/db",
+        "postgres://user:anything@[::1]:5432/db",
+        "postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres",
+        "postgresql://user:***@db.abc.supabase.co/postgres",
+    ],
+)
+def test_loopback_urls_and_placeholders_are_not_suspicious(text):
+    assert suspicious_database_urls(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "postgresql://postgres.abcdefgh:Xk3p9sLmQ2@aws-0-eu-central-1.pooler.supabase.com:5432/postgres",
+        "postgresql://postgres:hunter22@db.abcdefgh.supabase.co:5432/postgres",
+        "postgresql://postgres:postgres@localhost.example.com:5432/postgres",  # δεν είναι loopback
+        "postgresql://postgres:postgres@10.0.0.5:5432/postgres",
+    ],
+)
+def test_remote_urls_with_a_real_looking_password_are_suspicious(text):
+    assert len(suspicious_database_urls(text)) == 1
 
 
 def candidate_files() -> list[Path]:
@@ -110,9 +154,8 @@ def test_no_file_in_the_repository_contains_a_real_database_password_or_key():
         if relative.parts[0] in skip_dirs:
             continue  # τα tests χρησιμοποιούν ψεύτικους κωδικούς· ελέγχονται από τα ίδια τα tests
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in URL_WITH_PASSWORD.finditer(text):
-            if not PLACEHOLDER_PASSWORD.match(match.group(2)):
-                problems.append(f"{relative}: URL βάσης με κωδικό που δεν είναι κράτηση θέσης")
+        if suspicious_database_urls(text):
+            problems.append(f"{relative}: URL βάσης με κωδικό που δεν είναι κράτηση θέσης")
         for label, pattern in KEY_PATTERNS.items():
             if pattern.search(text):
                 problems.append(f"{relative}: μοιάζει με {label}")

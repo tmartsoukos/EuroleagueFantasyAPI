@@ -54,13 +54,13 @@ $env:ADMIN_API_KEY = "βάλε-μια-μεγάλη-τυχαία-τιμή"
 
 Μετά το πρώτο μήνυμα `Application startup complete` η υπηρεσία είναι έτοιμη (στο laptop περίπου 5,5 έως 6,5 s από την εκκίνηση της διεργασίας: εισαγωγές βιβλιοθηκών, φόρτωση μοντέλου, ανάγνωση βάσης και υπολογισμός των πρώτων προβλέψεων). Το Swagger είναι στο <http://127.0.0.1:8000/docs>.
 
-**Render** (το `render.yaml` γράφεται στη Φάση 6): εντολή εκκίνησης
+**Render** (`render.yaml`, οδηγίες στο `docs/DEPLOY.md`): εντολή εκκίνησης
 
 ```bash
-uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT
+uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT --workers 1
 ```
 
-με health check path `/health`. Το πακέτο `elfantasy` πρέπει να είναι εγκατεστημένο (`pip install .`) ή να οριστεί `PYTHONPATH=src`. Η εφαρμογή πρέπει να τρέχει με **μία** διεργασία (worker): ο `Predictor` και η cache των προβλέψεων ζουν μέσα στη διεργασία και το `/admin/refresh` ανανεώνει μόνο τη διεργασία που το δέχεται (ενότητα 11). Το `app` ΔΕΝ διαβάζει βάση ή μοντέλο στο import: αν λείπουν, η υπηρεσία ξεκινά σε degraded κατάσταση (ενότητα 3, `/health`).
+με health check path `/health`. Το πακέτο `elfantasy` πρέπει να είναι εγκατεστημένο (`pip install .`) ή να οριστεί `PYTHONPATH=src`. Η εφαρμογή πρέπει να τρέχει με **μία** διεργασία (worker): ο `Predictor` και η cache των προβλέψεων ζουν μέσα στη διεργασία και το `/admin/refresh` ανανεώνει μόνο τη διεργασία που το δέχεται (ενότητα 11). Το `--workers 1` είναι ρητό, γιατί το uvicorn διαβάζει αλλιώς τη μεταβλητή `WEB_CONCURRENCY`, που το Render ορίζει μόνο του για τις νέες υπηρεσίες (η τιμή της εξαρτάται από το Render και μπορεί να είναι μεγαλύτερη από 1). Το `app` ΔΕΝ διαβάζει βάση ή μοντέλο στο import: αν λείπουν, η υπηρεσία ξεκινά σε degraded κατάσταση (ενότητα 3, `/health`).
 
 ## 3. Ρυθμίσεις περιβάλλοντος
 
@@ -73,6 +73,7 @@ uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT
 | `ADMIN_API_KEY` | κενό | Κλειδί για τα προστατευμένα endpoints (ενότητα 8). **Κενό = τα endpoints είναι κλειστά** |
 | `MAE_THRESHOLD` | `6.00` | Δεν χρησιμοποιείται από το API (μόνο από την εκπαίδευση και το quality gate). Το `/health` δείχνει το threshold που καταγράφηκε στο `metrics.json` |
 | `DATA_DIR` | `data` | Δεν χρησιμοποιείται από το API (cache, αναφορές και logs του ingestion) |
+| `RENDER_GIT_COMMIT` (ή `GIT_COMMIT`) | κενό | Το commit του κώδικα που τρέχει. Το Render ορίζει μόνο του το `RENDER_GIT_COMMIT`· εμφανίζεται στο `commit` του `/health` και το διαβάζει το CI μετά από κάθε deploy (`docs/DEPLOY.md`). Τοπικά μένει κενό (`commit: null`) |
 
 Μία κοινή `engine` (από το `DATABASE_URL`) χρησιμοποιείται από την υπηρεσία, τη διαθεσιμότητα και τον `Predictor` (`Predictor.load(model_path, engine=engine)`).
 
@@ -135,6 +136,7 @@ curl -s http://127.0.0.1:8000/health
   },
   "data_age_days": 1,
   "data_loaded_through": "2026-10-02",
+  "commit": null,
   "problems": []
 }
 ```
@@ -142,6 +144,7 @@ curl -s http://127.0.0.1:8000/health
 - **HTTP 200 με `status: ok`** μόνο αν η βάση απαντά και περιέχει παίκτες **και** το μοντέλο φορτώθηκε και υπολόγισε τις πρώτες προβλέψεις. Αλλιώς **HTTP 503 με `status: degraded`**, και η λίστα `problems` λέει ποιος έλεγχος απέτυχε. Τα μηνύματα είναι σταθερά και σύντομα: δεν περιέχουν διαδρομές αρχείων, URL βάσης, credentials ή stack traces (η λεπτομέρεια γράφεται μόνο στο log του server).
 - `database.latest_played_game_date` είναι το data cutoff **της βάσης** (ζωντανό query) και `data_loaded_through` το cutoff **που έχουν φορτώσει οι προβλέψεις**. Αν διαφέρουν, η βάση έχει νεότερα δεδομένα και χρειάζεται `POST /admin/refresh`.
 - `data_age_days`: ημέρες από τον τελευταίο παιγμένο αγώνα μέχρι σήμερα (UTC). Δεν είναι πρόβλημα στο offseason.
+- `commit`: το SHA του commit που τρέχει, όταν η πλατφόρμα το δηλώνει (στο Render η μεταβλητή `RENDER_GIT_COMMIT`)· `null` τοπικά. Υπάρχει για το CI: μετά το deploy το Render χτίζει τη νέα έκδοση ενώ η παλιά εξακολουθεί να απαντά, γι' αυτό το `scripts/smoke_check.py` περιμένει να δει το `commit` του deploy και όχι απλώς `status: ok` (`docs/DEPLOY.md`). Το SHA ενός δημόσιου repo δεν είναι μυστικό.
 - `model.test_mae` και `threshold` προέρχονται από το `metrics.json` του μοντέλου· `null` όπου λείπουν.
 
 Πραγματική degraded απάντηση με `MODEL_PATH` που δεν υπάρχει (HTTP 503):
@@ -506,8 +509,8 @@ curl -s https://<host>/health
 ## 13. Περιορισμοί και ό,τι δεν επιβεβαιώθηκε
 
 - **Postgres (Φάση 5).** Το API δοκιμάστηκε σε **πραγματικό τοπικό Postgres** (PostgreSQL 18.4, `uvicorn` και `curl`: `/health`, `/rankings`, `/predict`, `POST`/`GET`/`DELETE /availability`, `POST /admin/refresh`, και τα ίδια πάνω σε `TestClient` στα tests με marker `postgres`)· οι προβλέψεις είναι ίδιες με της SQLite (μέγιστη διαφορά 0,0). **Δεν δοκιμάστηκε στο ίδιο το Supabase**: pooler, SSL, IPv4/IPv6, καθυστέρηση δικτύου (κάθε αίτημα `/predict` και `/rankings` διαβάζει τον πίνακα διαθεσιμότητας, δηλαδή ένα ταξίδι δικτύου προς τη βάση) και παύση του free tier. Για τον transaction pooler (πόρτα 6543) το `get_engine` ορίζει αυτόματα `prepare_threshold=None` (δοκιμάστηκε μόνο τοπικά, χωρίς pooler). Βλ. `docs/DATABASE.md`, ενότητες 12 και 13.
-- **Δεν δοκιμάστηκε στο Render:** ούτε χρόνος εκκίνησης, ούτε μνήμη, ούτε ταχύτητα στο free tier (όλες οι μετρήσεις είναι τοπικές). Δεν έχει ελεγχθεί αν η εκκίνηση (περίπου 6 s τοπικά) χωράει στα χρονικά όρια του Render σε αργό instance.
-- **Python.** Τα tests του API περνούν σε Python 3.13.2 και 3.12.7 (με τις ίδιες εκδόσεις βιβλιοθηκών)· η 3.11 δεν δοκιμάστηκε.
+- **Δεν δοκιμάστηκε στο Render:** ούτε χρόνος εκκίνησης με 0,1 CPU, ούτε ταχύτητα στο free tier. Η μνήμη μετρήθηκε τοπικά σε Linux με Python 3.12: κορυφή ~300 MB και μόνιμο RSS ~235 MB, κάτω από τα 512 MB του free plan (`docs/DEPLOY.md`, ενότητα 7)· η μέτρηση στο ίδιο το Render δεν έχει γίνει. Δεν έχει ελεγχθεί αν η εκκίνηση (περίπου 6 s τοπικά) χωράει στα χρονικά όρια του Render σε αργό instance.
+- **Python.** Το project απαιτεί Python ≥ 3.12 (`requires-python` του `pyproject.toml`): οι εκδόσεις του `constraints.txt` δεν υπάρχουν για την 3.11. Τα tests περνούν σε Python 3.13.2 (Windows) και σε 3.12 (Linux, καθαρό venv, όπως θα τα τρέξει το CI)· η 3.11 δεν υποστηρίζεται.
 - **Ένα worker.** Ο `Predictor` και η cache του ζουν στη διεργασία· με πολλούς workers το `POST /admin/refresh` ανανεώνει μόνο έναν.
 - **Δεν υπάρχει rate limiting, προστασία από brute force του κλειδιού, όριο μεγέθους σώματος αιτήματος ή CORS.** Ό,τι περιορισμό παρέχει το Render στο επίπεδο του proxy ισχύει, αλλά δεν δοκιμάστηκε. Αν χρειαστεί κλήση από browser σε άλλο domain, πρέπει να προστεθεί CORS.
 - **Ο «σήμερα» είναι UTC.** Ένας αγώνας με ώρα έναρξης κοντά στα μεσάνυχτα UTC αλλάζει από «επόμενος» σε «δεν υπάρχει» στις 00:00 UTC, ακόμη κι αν δεν έχει ενημερωθεί η βάση με το αποτέλεσμά του.

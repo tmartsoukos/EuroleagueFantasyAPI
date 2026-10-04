@@ -5,7 +5,9 @@
 #
 # Έκδοση Python: το CI και το Render τρέχουν σε Python 3.12. Οι τελευταίες εκδόσεις numpy 2.5,
 # scipy 1.18 και xgboost 3.4 απαιτούν Python >= 3.12 (σε 3.11 το pip θα διάλεγε numpy 2.4,
-# scipy 1.17 και xgboost 3.2, γι' αυτό το κάτω όριο του xgboost είναι 3.2). Αν το αποθηκευμένο
+# scipy 1.17 και xgboost 3.2, γι' αυτό το κάτω όριο του xgboost είναι 3.2). Από τη Φάση 6 το
+# project απαιτεί Python >= 3.12 (pyproject.toml) και το constraints.txt καρφώνει τις ακριβείς
+# εκδόσεις (`pip install -r requirements.txt -c constraints.txt`). Αν το αποθηκευμένο
 # μοντέλο (joblib) εκπαιδευτεί με άλλη έκδοση xgboost/scikit-learn από αυτή που το φορτώνει,
 # μπορεί να μην ανοίξει σωστά: οι εκδόσεις καταγράφονται στο models/metrics.json και
 # ελέγχονται κατά τη φόρτωση.

@@ -9,7 +9,11 @@ name = "elfantasy"
 version = "0.1.0"
 description = "Euroleague Fantasy Points Predictor API: πρόβλεψη fantasy score παικτών Euroleague"
 readme = "README.md"
-requires-python = ">=3.11"
+# Python 3.12 ή νεότερη. Οι εκδόσεις με τις οποίες εκπαιδεύτηκε το committed μοντέλο (numpy 2.5,
+# scipy 1.18, xgboost 3.4, βλ. constraints.txt) απαιτούν Python >= 3.12· σε 3.11 το pip θα διάλεγε
+# παλαιότερες εκδόσεις και το μοντέλο θα φόρτωνε με ModelVersionWarning. Το CI και το Render
+# τρέχουν σε 3.12 (.github/workflows/ci.yml, render.yaml).
+requires-python = ">=3.12"
 # Οι εξαρτήσεις διαβάζονται από το requirements.txt, ώστε να υπάρχει μία μόνο πηγή αλήθειας.
 dynamic = ["dependencies"]
 
@@ -26,8 +30,9 @@ elfantasy = ["db/migrations/*.sql"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Το "tests" στο pythonpath επιτρέπει import των βοηθητικών modules των tests (synthetic_league,
-# feature_reference) από τα αρχεία δοκιμών και το conftest.
-pythonpath = ["src", "tests"]
+# feature_reference) από τα αρχεία δοκιμών και το conftest. Το "scripts" επιτρέπει στα tests να
+# εισάγουν τα εργαλεία του CI (make_coverage_badge, smoke_check), που δεν ανήκουν στο πακέτο.
+pythonpath = ["src", "tests", "scripts"]
 # importlib: επιτρέπει αρχεία δοκιμών με το ίδιο όνομα σε διαφορετικούς φακέλους (unit/integration).
 addopts = "-ra --import-mode=importlib"
 markers = [
@@ -44,7 +49,7 @@ filterwarnings = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 extend-exclude = ["data", "models"]
 
 [tool.ruff.lint]

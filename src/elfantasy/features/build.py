@@ -941,16 +941,24 @@ def build_features(
 
     for name, values in columns.items():
         frame[name] = values
+    del columns, own, opp, team_table, game_table, box, hist, upc  # μνήμη: δεν χρειάζονται πια
 
     # Στόχοι μόνο για συμμετοχές.
     appearance = frame["is_appearance"]
     frame["fantasy_score"] = frame["fantasy_score"].where(appearance)
     frame["pir"] = frame["pir"].where(appearance)
 
-    frame = frame.sort_values(
-        ["sort_time", "season", "gamecode", "player_id"], kind="stable"
-    ).reset_index(drop=True)
+    # Μνήμη: η νέα σειρά προκύπτει από ταξινόμηση ΜΟΝΟ των 4 στηλών-κλειδιών (με τον ίδιο κανόνα
+    # και την ίδια σταθερή ταξινόμηση που θα εφαρμοζόταν σε ολόκληρο το frame) και το αποτέλεσμα
+    # δημιουργείται με ένα μόνο αντίγραφο των στηλών εξόδου, αντί για ταξινομημένο αντίγραφο
+    # ολόκληρου του frame και δεύτερο `.copy()`. Οι τιμές, οι τύποι και η σειρά των γραμμών είναι
+    # ίδιοι με πριν (tests/unit/test_features.py).
+    sort_keys = ["sort_time", "season", "gamecode", "player_id"]
+    order = frame.index.get_indexer(frame[sort_keys].sort_values(sort_keys, kind="stable").index)
     ordered = [*ID_COLUMNS, *META_COLUMNS, *TARGET_COLUMNS, *FEATURE_COLUMNS]
-    result = frame[ordered].copy()
-    result[FEATURE_COLUMNS] = result[FEATURE_COLUMNS].astype(np.float64)
+    result = frame[ordered].take(order).reset_index(drop=True)
+    del frame
+    not_float = [name for name in FEATURE_COLUMNS if result[name].dtype != np.float64]
+    if not_float:
+        result[not_float] = result[not_float].astype(np.float64)
     return result

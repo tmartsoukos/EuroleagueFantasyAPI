@@ -488,6 +488,14 @@ class HealthResponse(ApiModel):
             "`POST /admin/refresh`."
         ),
     )
+    commit: str | None = Field(
+        default=None,
+        description=(
+            "Το commit (SHA) του κώδικα που τρέχει, όταν η πλατφόρμα το δηλώνει (στο Render, από "
+            "τη μεταβλητή `RENDER_GIT_COMMIT`)· `null` τοπικά. Το CI το χρησιμοποιεί μετά από ένα "
+            "deploy για να βεβαιωθεί ότι απαντά η νέα έκδοση και όχι η παλιά."
+        ),
+    )
     problems: list[str] = Field(
         description="Ποιοι έλεγχοι απέτυχαν (σύντομα μηνύματα, χωρίς εσωτερικές λεπτομέρειες)."
     )
@@ -512,6 +520,7 @@ class HealthResponse(ApiModel):
                     },
                     "data_age_days": 1,
                     "data_loaded_through": "2026-10-02",
+                    "commit": None,
                     "problems": [],
                 }
             ]
