@@ -145,9 +145,9 @@ curl -s -X POST http://127.0.0.1:8000/availability \
   "name": "VEZENKOV, SASHA",
   "team_code": "OLY",
   "next_game": {"game_date": "2026-10-09", "opponent_code": "IST", "home": true},
-  "predicted_fantasy": 20.13,
-  "model_predicted_fantasy": 20.13,
-  "predicted_pir": 18.64,
+  "predicted_fantasy": 19.88,
+  "model_predicted_fantasy": 19.88,
+  "predicted_pir": 18.43,
   "availability": {"status": "available"},
   "notes": []
 }

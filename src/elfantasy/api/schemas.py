@@ -159,9 +159,9 @@ class PredictionOut(ApiModel):
                         "opponent_name": "ANADOLU EFES ISTANBUL",
                         "home": True,
                     },
-                    "predicted_fantasy": 20.13,
-                    "model_predicted_fantasy": 20.13,
-                    "predicted_pir": 18.64,
+                    "predicted_fantasy": 19.88,
+                    "model_predicted_fantasy": 19.88,
+                    "predicted_pir": 18.43,
                     "availability": {
                         "status": "available",
                         "source": None,
@@ -171,7 +171,7 @@ class PredictionOut(ApiModel):
                     },
                     "n_prior_appearances": 286,
                     "last_appearance_date": "2026-10-01",
-                    "model_version": "20261003T140043Z-7ae47948",
+                    "model_version": "20261004T045157Z-a87106fb",
                     "notes": [],
                 }
             ]
@@ -235,8 +235,8 @@ class RankingsOut(ApiModel):
             "examples": [
                 {
                     "meta": {
-                        "as_of": "2026-10-03",
-                        "model_version": "20261003T140043Z-7ae47948",
+                        "as_of": "2026-10-04",
+                        "model_version": "20261004T045157Z-a87106fb",
                         "total": 262,
                         "limit": 2,
                         "offset": 0,
@@ -247,9 +247,9 @@ class RankingsOut(ApiModel):
                             "player_id": "P009846",
                             "name": "BRYANT, ELIJAH",
                             "team_code": "HTA",
-                            "predicted_fantasy": 20.9,
-                            "model_predicted_fantasy": 20.9,
-                            "predicted_pir": 20.04,
+                            "predicted_fantasy": 20.63,
+                            "model_predicted_fantasy": 20.63,
+                            "predicted_pir": 19.7,
                             "next_opponent_code": "PAM",
                             "next_home": False,
                             "next_game_date": "2026-10-08",
@@ -261,9 +261,9 @@ class RankingsOut(ApiModel):
                             "player_id": "P003469",
                             "name": "VEZENKOV, SASHA",
                             "team_code": "OLY",
-                            "predicted_fantasy": 20.13,
-                            "model_predicted_fantasy": 20.13,
-                            "predicted_pir": 18.64,
+                            "predicted_fantasy": 19.88,
+                            "model_predicted_fantasy": 19.88,
+                            "predicted_pir": 18.43,
                             "next_opponent_code": "IST",
                             "next_home": True,
                             "next_game_date": "2026-10-09",
@@ -522,9 +522,9 @@ class HealthResponse(ApiModel):
                 {
                     "status": "ok",
                     "model": {
-                        "version": "20261003T140043Z-7ae47948",
+                        "version": "20261004T045157Z-a87106fb",
                         "selected_model": "xgb_pseudohuber_09",
-                        "test_mae": 5.908791,
+                        "test_mae": 5.885597,
                         "threshold": 6.0,
                         "trained_through_season": 2024,
                     },
