@@ -562,13 +562,28 @@ class TestConstraints:
 
 
 class TestDocumentation:
-    def test_the_readme_has_the_build_and_coverage_badges_and_the_phase_7_note(self):
+    def test_the_readme_has_the_build_and_coverage_badges_and_the_full_instructions(self):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         repo = "tmartsoukos/EuroleagueFantasyAPI"
         assert f"https://github.com/{repo}/actions/workflows/ci.yml/badge.svg?branch=main" in text
         assert f"https://raw.githubusercontent.com/{repo}/badges/coverage.svg" in text
-        assert "Το πλήρες README" in text and "Φάση 7" in text
         assert text.lstrip().startswith("# Euroleague Fantasy Points Predictor API")
+        # Το τελικό README (Φάση 7) έχει οδηγίες setup, run, test και deploy· όχι πια το stub.
+        assert "Το πλήρες README" not in text
+        for heading in (
+            "## Γρήγορη εκκίνηση (setup)",
+            "## Χρήση του API",
+            "## Tests και ποιότητα",
+            "## CI/CD και deploy στο Render",
+        ):
+            assert heading in text, heading
+        for command in (
+            "pip install -r requirements-dev.txt -c constraints.txt",
+            "pytest -q",
+            "uvicorn elfantasy.api.main:app",
+            "python -m elfantasy.ingest.pipeline",
+        ):
+            assert command in text, command
 
     def test_the_deploy_guide_covers_every_step_the_user_must_take(self):
         text = (ROOT / "docs" / "DEPLOY.md").read_text(encoding="utf-8")

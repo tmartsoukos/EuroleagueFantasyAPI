@@ -108,7 +108,7 @@ def to_records(frame: pd.DataFrame, columns: Sequence[str]) -> list[dict]:
 
 
 def add_scores(player_games: pd.DataFrame) -> pd.DataFrame:
-    """Προσθέτει το PIR (από τα στατιστικά) και το fantasy score (PIR × 1,1 σε νίκη)."""
+    """Προσθέτει το PIR (από τα στατιστικά) και το fantasy score (PIR + |PIR|/10 σε νίκη)."""
     result = player_games.copy()
     result["pir"] = scoring.pir_frame(result)
     result["fantasy_score"] = scoring.fantasy_score_frame(result["pir"], result["won"])

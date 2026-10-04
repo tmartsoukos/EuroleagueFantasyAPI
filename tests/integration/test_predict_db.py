@@ -91,13 +91,13 @@ class TestRealPlayers:
         assert larkin.features["home"] is None and larkin.features["opp_def_pir_5"] is None
         assert larkin.features["min_last"] == pytest.approx(33 + 21 / 60)  # 33:21
         assert larkin.features["pir_mean_5"] == 12.0
-        assert larkin.features["fantasy_mean_5"] == pytest.approx(13.2)  # νίκη: PIR × 1,1
+        assert larkin.features["fantasy_mean_5"] == pytest.approx(13.2)  # νίκη: PIR + |PIR|/10
         assert np.isfinite(larkin.predicted_fantasy) and np.isfinite(larkin.predicted_pir)
 
     def test_negative_pir_and_a_player_who_did_not_play(self, predictor):
         hazer = predictor.predict_player("P011201", as_of=AS_OF)  # PIR -4 σε νίκη
         assert hazer.features["pir_mean_5"] == -4.0
-        assert hazer.features["fantasy_mean_5"] == pytest.approx(-4.4)
+        assert hazer.features["fantasy_mean_5"] == pytest.approx(-3.6)  # νίκη: −4 + 0,4
         beaubois = predictor.predict_player("P006590", as_of=AS_OF)  # DNP στον 2025/1
         assert beaubois.n_prior_appearances == 0
         assert beaubois.last_appearance_date is None

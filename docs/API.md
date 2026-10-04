@@ -1,6 +1,6 @@
 # API πρόβλεψης fantasy score (Φάση 4)
 
-Το έγγραφο περιγράφει την υπηρεσία FastAPI που εξυπηρετεί τις προβλέψεις του μοντέλου της Φάσης 3 (`docs/MODEL.md`): τα endpoints, την ερμηνεία των τιμών, τη διαθεσιμότητα παικτών (τραυματισμοί), την ασφάλεια, τις ρυθμίσεις, την εκτέλεση τοπικά και στο Render, την ανανέωση δεδομένων, τα tests και τους περιορισμούς. Τα παραδείγματα responses είναι **πραγματικά**: προέρχονται από τρέξιμο του `uvicorn` στις 2026-10-03 πάνω στην πραγματική βάση `data/elfantasy.db` (δεδομένα έως 02/10/2026) και στο committed `models/model.joblib` (έκδοση `20261003T140043Z-7ae47948`).
+Το έγγραφο περιγράφει την υπηρεσία FastAPI που εξυπηρετεί τις προβλέψεις του μοντέλου της Φάσης 3 (`docs/MODEL.md`): τα endpoints, την ερμηνεία των τιμών, τη διαθεσιμότητα παικτών (τραυματισμοί), την ασφάλεια, τις ρυθμίσεις, την εκτέλεση τοπικά και στο Render, την ανανέωση δεδομένων, τα tests και τους περιορισμούς. Τα παραδείγματα responses είναι **πραγματικά**. Αυτά που εξαρτώνται από το μοντέλο (`/health`, `/predict`, `/rankings`, `/admin/refresh`) προέρχονται από τρέξιμο του `uvicorn` στις 2026-10-04 πάνω στην πραγματική βάση `data/elfantasy.db` (δεδομένα έως 02/10/2026) και στο committed `models/model.joblib` (έκδοση `20261004T045157Z-a87106fb`, επανεκπαιδευμένο μετά τη διόρθωση του κανόνα του fantasy score, `FANTASY_RULES.md`, ενότητα 3.4). Τα παραδείγματα διαθεσιμότητας και degraded κατάστασης και οι μετρήσεις απόδοσης της ενότητας 10 προέρχονται από τρέξιμο της 2026-10-03.
 
 ## 1. Σύνοψη
 
@@ -81,11 +81,11 @@ uvicorn elfantasy.api.main:app --host 0.0.0.0 --port $PORT --workers 1
 
 Η πλήρης συζήτηση βρίσκεται στο `docs/MODEL.md` (ενότητες 9 και 14). Τα σημεία που αφορούν όσους καταναλώνουν το API:
 
-- **Το `predicted_fantasy` είναι «τυπική» τιμή και όχι μέσος όρος.** Το μοντέλο ελαχιστοποιεί το MAE και προσεγγίζει τη **διάμεσο**: έχει αρνητικό bias περίπου −0,8 πόντων (−0,77 στο test του 2025), δηλαδή υποτιμά κατά μέσο όρο. Η υποτίμηση δεν είναι ίδια για κάθε παίκτη.
+- **Το `predicted_fantasy` είναι «τυπική» τιμή και όχι μέσος όρος.** Το μοντέλο ελαχιστοποιεί το MAE και προσεγγίζει τη **διάμεσο**: έχει αρνητικό bias περίπου −0,8 πόντων (−0,78 στο test του 2025), δηλαδή υποτιμά κατά μέσο όρο. Η υποτίμηση δεν είναι ίδια για κάθε παίκτη.
 - **Υποθέτει ότι ο παίκτης αγωνίζεται.** Δεν προβλέπει τραυματισμούς, απουσίες ή αλλαγές ρόστερ· ένας παίκτης του βάθους με 50% πιθανότητα DNP έχει την ίδια πρόβλεψη με έναν βασικό με τα ίδια λεπτά. Γι' αυτό υπάρχει το χειροκίνητο override διαθεσιμότητας (ενότητα 7).
 - **Δεν περιλαμβάνει captain ×2 ή πάγκο ×0,5.** Είναι επιλογές ρόστερ και εφαρμόζονται εκ των υστέρων από τον καταναλωτή (`FANTASY_RULES.md`).
-- **Το `predicted_pir` είναι ανεξάρτητο μοντέλο**, όχι υπολογισμένο από το fantasy. Στους ενεργούς παίκτες η συσχέτιση είναι 0,997, αλλά στο 13% των παικτών το fantasy είναι ελαφρά μικρότερο από το PIR, παρότι για θετικό PIR ο τύπος δίνει fantasy ≥ PIR. Μην υπολογίζεις το ένα από το άλλο. Το `predicted_pir` **δεν επηρεάζεται από τη διαθεσιμότητα**: ακόμη και για παίκτη `out` είναι η ακατέργαστη τιμή του μοντέλου.
-- **Μέγεθος σφάλματος.** Το honest MAE είναι 5,91 πόντοι fantasy (R² 0,24)· το μοντέλο είναι καλύτερο από το naive baseline κατά 3,9%. Η αξία της πρόβλεψης είναι στη σύγκριση παικτών και στον μέσο όρο πολλών αγώνων, όχι στον ακριβή αριθμό ενός αγώνα.
+- **Το `predicted_pir` είναι ανεξάρτητο μοντέλο**, όχι υπολογισμένο από το fantasy. Στους ενεργούς παίκτες η συσχέτιση είναι 0,997, αλλά στο 14% των παικτών (36 από 262) το fantasy είναι ελαφρά μικρότερο από το PIR (έως 0,35), παρότι ο τύπος δίνει fantasy ≥ PIR για κάθε PIR. Μην υπολογίζεις το ένα από το άλλο. Το `predicted_pir` **δεν επηρεάζεται από τη διαθεσιμότητα**: ακόμη και για παίκτη `out` είναι η ακατέργαστη τιμή του μοντέλου.
+- **Μέγεθος σφάλματος.** Το honest MAE είναι 5,89 πόντοι fantasy (R² 0,24)· το μοντέλο είναι καλύτερο από το naive baseline κατά 3,9%. Η αξία της πρόβλεψης είναι στη σύγκριση παικτών και στον μέσο όρο πολλών αγώνων, όχι στον ακριβή αριθμό ενός αγώνα.
 - **Ο επόμενος αγώνας** είναι ο πρώτος αγώνας της ομάδας του παίκτη με `played = false` και `game_date` από **σήμερα (UTC)** και μετά. Ο αγώνας της σημερινής ημέρας παραμένει «επόμενος» μέχρι να ενημερωθεί η βάση (νέο ingestion και `POST /admin/refresh`).
 - **`is_active`.** Ο παίκτης έχει γραμμή αγώνα (και ως DNP) στη νεότερη σεζόν που έχει ξεκινήσει ή μέσα στις τελευταίες 45 ημέρες. Αν είναι `false` (π.χ. έφυγε από τη λίγκα, ή δεν έχει ακόμη παίξει στη νέα σεζόν), εξακολουθεί να υπάρχει πρόβλεψη με την ομάδα της τελευταίας γραμμής του και τον επόμενο αγώνα της, αλλά η ομάδα και ο αγώνας μπορεί να είναι παλιά. Τα `/rankings` δείχνουν από προεπιλογή μόνο ενεργούς.
 - **`n_prior_appearances`.** Όσο μικρότερο, τόσο λιγότερο αξιόπιστη η πρόβλεψη (0 = μόνο το πλαίσιο του αγώνα έχει σήμα).
@@ -122,9 +122,9 @@ curl -s http://127.0.0.1:8000/health
 {
   "status": "ok",
   "model": {
-    "version": "20261003T140043Z-7ae47948",
+    "version": "20261004T045157Z-a87106fb",
     "selected_model": "xgb_pseudohuber_09",
-    "test_mae": 5.908791,
+    "test_mae": 5.885597,
     "threshold": 6.0,
     "trained_through_season": 2024
   },
@@ -134,7 +134,7 @@ curl -s http://127.0.0.1:8000/health
     "latest_played_game_date": "2026-10-02",
     "next_scheduled_game_date": "2026-10-07"
   },
-  "data_age_days": 1,
+  "data_age_days": 2,
   "data_loaded_through": "2026-10-02",
   "commit": null,
   "problems": []
@@ -189,13 +189,13 @@ curl -s http://127.0.0.1:8000/predict/P003469
     "opponent_name": "ANADOLU EFES ISTANBUL",
     "home": true
   },
-  "predicted_fantasy": 20.13,
-  "model_predicted_fantasy": 20.13,
-  "predicted_pir": 18.64,
+  "predicted_fantasy": 19.88,
+  "model_predicted_fantasy": 19.88,
+  "predicted_pir": 18.43,
   "availability": {"status": "available", "source": null, "note": null, "expected_return": null, "updated_at": null},
   "n_prior_appearances": 286,
   "last_appearance_date": "2026-10-01",
-  "model_version": "20261003T140043Z-7ae47948",
+  "model_version": "20261004T045157Z-a87106fb",
   "notes": []
 }
 ```
@@ -224,13 +224,13 @@ curl -s http://127.0.0.1:8000/predict/P007200
   "team_name": "ANADOLU EFES ISTANBUL",
   "is_active": false,
   "next_game": {"season": 2026, "gamecode": 40, "game_date": "2026-10-09", "tipoff_utc": "2026-10-09T18:15:00Z", "opponent_code": "OLY", "opponent_name": "OLYMPIACOS PIRAEUS", "home": false},
-  "predicted_fantasy": 7.84,
-  "model_predicted_fantasy": 7.84,
-  "predicted_pir": 8.2,
+  "predicted_fantasy": 7.85,
+  "model_predicted_fantasy": 7.85,
+  "predicted_pir": 7.98,
   "availability": {"status": "available", "source": null, "note": null, "expected_return": null, "updated_at": null},
   "n_prior_appearances": 258,
   "last_appearance_date": "2026-04-08",
-  "model_version": "20261003T140043Z-7ae47948",
+  "model_version": "20261004T045157Z-a87106fb",
   "notes": ["player is not active (no games in the latest season or in the last 45 days): team and next game may be outdated"]
 }
 ```
@@ -259,11 +259,11 @@ curl -s "http://127.0.0.1:8000/rankings?team=OLY&limit=3"
 
 ```json
 {
-  "meta": {"as_of": "2026-10-03", "model_version": "20261003T140043Z-7ae47948", "total": 14, "limit": 3, "offset": 0},
+  "meta": {"as_of": "2026-10-04", "model_version": "20261004T045157Z-a87106fb", "total": 14, "limit": 3, "offset": 0},
   "items": [
-    {"rank": 1, "player_id": "P003469", "name": "VEZENKOV, SASHA", "team_code": "OLY", "predicted_fantasy": 20.13, "model_predicted_fantasy": 20.13, "predicted_pir": 18.64, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true},
-    {"rank": 2, "player_id": "P010042", "name": "MONTERO, JEAN", "team_code": "OLY", "predicted_fantasy": 17.46, "model_predicted_fantasy": 17.46, "predicted_pir": 15.99, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true},
-    {"rank": 3, "player_id": "P009849", "name": "DORSEY, TYLER", "team_code": "OLY", "predicted_fantasy": 15.4, "model_predicted_fantasy": 15.4, "predicted_pir": 14.51, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true}
+    {"rank": 1, "player_id": "P003469", "name": "VEZENKOV, SASHA", "team_code": "OLY", "predicted_fantasy": 19.88, "model_predicted_fantasy": 19.88, "predicted_pir": 18.43, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true},
+    {"rank": 2, "player_id": "P010042", "name": "MONTERO, JEAN", "team_code": "OLY", "predicted_fantasy": 17.9, "model_predicted_fantasy": 17.9, "predicted_pir": 15.93, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true},
+    {"rank": 3, "player_id": "P009849", "name": "DORSEY, TYLER", "team_code": "OLY", "predicted_fantasy": 15.72, "model_predicted_fantasy": 15.72, "predicted_pir": 14.1, "next_opponent_code": "IST", "next_home": true, "next_game_date": "2026-10-09", "availability_status": "available", "is_active": true}
   ]
 }
 ```
@@ -272,11 +272,11 @@ curl -s "http://127.0.0.1:8000/rankings?team=OLY&limit=3"
 
 | rank | player_id | Παίκτης | Ομάδα | predicted_fantasy | Επόμενος αγώνας |
 |---|---|---|---|---|---|
-| 1 | `P009846` | BRYANT, ELIJAH | HTA | 20,9 | 2026-10-08, εκτός, PAM |
-| 2 | `P003469` | VEZENKOV, SASHA | OLY | 20,13 | 2026-10-09, εντός, IST |
-| 3 | `P011286` | BACON, DWAYNE | DUB | 18,08 | 2026-10-08, εντός, RED |
-| 4 | `P013369` | JONES, CARLIK | PAR | 17,86 | 2026-10-08, εκτός, MAD |
-| 5 | `P012796` | KABENGELE, MFIONDU | DUB | 17,86 | 2026-10-08, εντός, RED |
+| 1 | `P009846` | BRYANT, ELIJAH | HTA | 20,63 | 2026-10-08, εκτός, PAM |
+| 2 | `P003469` | VEZENKOV, SASHA | OLY | 19,88 | 2026-10-09, εντός, IST |
+| 3 | `P010042` | MONTERO, JEAN | OLY | 17,9 | 2026-10-09, εντός, IST |
+| 4 | `P011286` | BACON, DWAYNE | DUB | 17,57 | 2026-10-08, εντός, RED |
+| 5 | `P012796` | KABENGELE, MFIONDU | DUB | 17,48 | 2026-10-08, εντός, RED |
 
 **Κανόνες ταξινόμησης και σελιδοποίησης**
 
@@ -377,13 +377,13 @@ curl -s -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:8000/admin/refre
 ```json
 {
   "status": "refreshed",
-  "model_version": "20261003T140043Z-7ae47948",
+  "model_version": "20261004T045157Z-a87106fb",
   "players": 1212,
   "previous_latest_played_game_date": "2026-10-02",
   "latest_played_game_date": "2026-10-02",
   "next_scheduled_game_date": "2026-10-07",
-  "refreshed_at": "2026-10-03T15:08:06.333429Z",
-  "duration_seconds": 1.723
+  "refreshed_at": "2026-10-04T08:43:56.759455Z",
+  "duration_seconds": 1.471
 }
 ```
 

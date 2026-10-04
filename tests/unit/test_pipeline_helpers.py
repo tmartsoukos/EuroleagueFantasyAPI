@@ -109,7 +109,7 @@ class TestScores:
         )
         scored = pipeline.add_scores(frame)
         assert scored["pir"].tolist() == [12, -4]  # Larkin και Hazer (FANTASY_RULES.md, §7)
-        assert scored["fantasy_score"].tolist() == [13.2, -4.4]
+        assert scored["fantasy_score"].tolist() == [13.2, -3.6]
         assert "pir" not in frame.columns  # δεν τροποποιεί την είσοδο
 
 

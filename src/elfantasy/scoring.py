@@ -1,15 +1,21 @@
 """Υπολογισμός του PIR και του fantasy score ενός παίκτη (ο τύπος ορίζεται στο FANTASY_RULES.md).
 
-Οι συναρτήσεις είναι καθαρές και δεν εξαρτώνται από pandas. Οι εκδόσεις `*_frame` δουλεύουν
-σε στήλες DataFrame χρησιμοποιώντας μόνο αριθμητικούς τελεστές (vectorized), χωρίς import
-του pandas σε αυτό το αρχείο.
+Οι συναρτήσεις είναι καθαρές και δεν εξαρτώνται από pandas (το numpy χρειάζεται μόνο για να
+αναγνωρίζεται ο `np.bool_`). Οι εκδόσεις `*_frame` δουλεύουν σε στήλες DataFrame χρησιμοποιώντας
+μόνο αριθμητικούς τελεστές και μεθόδους των Series (vectorized), χωρίς import του pandas σε αυτό
+το αρχείο.
 
 Τύπος (FANTASY_RULES.md, ενότητα 3):
 
     PIR = πόντοι + ριμπάουντ + ασίστ + κλεψίματα + μπλοκ που κάνει + φάουλ που δέχεται
           - αστοχημένα δίποντα - αστοχημένα τρίποντα - αστοχημένες βολές
           - λάθη - μπλοκ που δέχεται - φάουλ που κάνει
-    fantasy = PIR × 1,1 αν η ομάδα του παίκτη κερδίσει, αλλιώς PIR
+    fantasy = PIR + |PIR| / 10 αν η ομάδα του παίκτη κερδίσει, αλλιώς PIR
+
+Το μπόνους νίκης είναι το 10% του ΑΠΟΛΥΤΟΥ PIR και προστίθεται πάντα θετικό: PIR 12 → 13,2 (×1,1)
+και PIR −4 → −3,6 (×0,9, όχι −4,4). Ο κανόνας για το αρνητικό PIR δεν προκύπτει από κείμενο
+κανονισμού αλλά από τα επίσημα σύνολα βαθμών των νικητών των αγωνιστικών του Fantasy Challenge
+(FANTASY_RULES.md, ενότητες 3.4 και 9).
 """
 
 from __future__ import annotations
@@ -18,11 +24,14 @@ import operator
 from collections.abc import Mapping
 from typing import Any
 
-# Μπόνους νίκης: ×1,1 (FANTASY_RULES.md, ενότητα 3.2), σε ακέραια αριθμητική ως 11/10.
-# Το `pir * 1.1` δίνει θόρυβο κινητής υποδιαστολής (12 * 1.1 = 13.200000000000001), ενώ το
-# `pir * 11 / 10` διαιρεί δύο ακέραιους και δίνει το πλησιέστερο double στην ακριβή τιμή,
-# δηλαδή πάντα το «καθαρό» δεκαδικό με το πολύ ένα ψηφίο (FANTASY_RULES.md, ενότητα 3.3).
-WIN_BONUS_NUM = 11
+import numpy as np
+
+# Μπόνους νίκης: το 1/10 του |PIR| (FANTASY_RULES.md, ενότητα 3.2), προστίθεται πάντα θετικό.
+# Υπολογίζεται με ακέραια αριθμητική ως `(pir * 10 + |pir|) / 10`, δηλαδή `pir * 11 / 10` για
+# PIR ≥ 0 και `pir * 9 / 10` για PIR < 0. Το `pir * 1.1` δίνει θόρυβο κινητής υποδιαστολής
+# (12 * 1.1 = 13.200000000000001), ενώ η διαίρεση δύο ακεραίων δίνει το πλησιέστερο double στην
+# ακριβή τιμή, δηλαδή πάντα το «καθαρό» δεκαδικό με το πολύ ένα ψηφίο (FANTASY_RULES.md, 3.3).
+WIN_BONUS_NUM = 1
 WIN_BONUS_DEN = 10
 
 # Αντιστοίχιση ορισμάτων του `pir()` σε στήλες των πινάκων του project (db/models.py).
@@ -144,19 +153,62 @@ def pir_frame(df: Any, columns: Mapping[str, str] = CLEAN_COLUMNS) -> Any:
 
 
 def fantasy_score(pir: int, won: bool) -> float:
-    """Fantasy score παίκτη: `PIR × 1,1` αν η ομάδα του κέρδισε, αλλιώς το PIR.
+    """Fantasy score παίκτη: `PIR + |PIR| / 10` αν η ομάδα του κέρδισε, αλλιώς το PIR.
 
-    Ο υπολογισμός γίνεται με ακέραια αριθμητική (`pir * 11 / 10`), οπότε το αποτέλεσμα έχει
-    πάντα το πολύ ένα δεκαδικό και δεν έχει θόρυβο κινητής υποδιαστολής. Το αρνητικό PIR
-    σε νίκη πολλαπλασιάζεται κατά γράμμα (−4 → −4,4), όπως ορίζει το FANTASY_RULES.md, ενότητα
-    3.4. Παίκτης που δεν αγωνίστηκε (DNP) έχει PIR 0 και άρα fantasy score 0.
+    Το μπόνους νίκης είναι το 10% του απόλυτου PIR και προστίθεται πάντα θετικό: PIR 12 → 13,2
+    και PIR −4 → −3,6 (FANTASY_RULES.md, ενότητες 3.2 και 3.4). Η νίκη δεν μειώνει λοιπόν ποτέ το
+    score. Ο υπολογισμός γίνεται με ακέραια αριθμητική (`pir * 11 / 10` για PIR ≥ 0, `pir * 9 / 10`
+    για PIR < 0), οπότε το αποτέλεσμα έχει πάντα το πολύ ένα δεκαδικό και δεν έχει θόρυβο κινητής
+    υποδιαστολής. Παίκτης που δεν αγωνίστηκε (DNP) έχει PIR 0 και άρα fantasy score 0.
 
-    Το `pir` πρέπει να είναι ακέραιο (δέχονται και οι ακέραιοι της numpy). Επιστρέφει πάντα float.
+    Η είσοδος ελέγχεται αυστηρά, ώστε μια ελλιπής ή λάθος τιμή να μη δώσει σιωπηλά μπόνους:
+
+    - το `pir` πρέπει να είναι ακέραιο (δέχονται και οι ακέραιοι της numpy) και όχι bool
+      (`TypeError` για float, NaN, None, bool),
+    - το `won` πρέπει να είναι bool ή `np.bool_` (`TypeError` για str, NaN, None, ακεραίους).
+
+    Επιστρέφει πάντα float.
     """
+    if isinstance(pir, bool | np.bool_):
+        raise TypeError(f"pir must be an integer, not a bool, got {pir!r}")
+    if not isinstance(won, bool | np.bool_):
+        raise TypeError(f"won must be a bool, got {won!r} ({type(won).__name__})")
     pir_value = operator.index(pir)
     if won:
-        return pir_value * WIN_BONUS_NUM / WIN_BONUS_DEN
+        return (pir_value * WIN_BONUS_DEN + abs(pir_value) * WIN_BONUS_NUM) / WIN_BONUS_DEN
     return float(pir_value)
+
+
+def _checked_pir_values(pir_values: Any) -> Any:
+    """Επικυρώνει το PIR ενός frame και το επιστρέφει ως Series int64 (χωρίς overflow)."""
+    kind = pir_values.dtype.kind
+    if kind == "b":
+        raise TypeError("pir must be an integer Series, not bool")
+    if kind not in "iu":
+        raise TypeError(f"pir must be an integer Series, got dtype {pir_values.dtype}")
+    if pir_values.isna().any():
+        raise ValueError("pir contains missing values")
+    # Το upcast αποτρέπει overflow μικρών ακεραίων τύπων (π.χ. int8) στον πολλαπλασιασμό με το 10.
+    return pir_values.astype("int64")
+
+
+def _checked_won_mask(won: Any) -> Any:
+    """Επικυρώνει το `won` ενός frame και το επιστρέφει ως Series bool (χωρίς σιωπηλό astype)."""
+    kind = won.dtype.kind
+    if kind == "b":
+        if won.isna().any():  # nullable boolean με ελλιπείς τιμές
+            raise ValueError("won contains missing values")
+        return won.astype(bool)
+    if kind == "O":
+        is_bool = won.map(lambda value: isinstance(value, bool | np.bool_)).astype(bool)
+        if not is_bool.all():
+            first_bad = won[~is_bool].iloc[0]
+            raise TypeError(
+                f"won must contain only bool values, found {int((~is_bool).sum())} other "
+                f"value(s), e.g. {first_bad!r}"
+            )
+        return won.astype(bool)
+    raise TypeError(f"won must be a bool Series, got dtype {won.dtype}")
 
 
 def fantasy_score_frame(pir_values: Any, won: Any) -> Any:
@@ -164,6 +216,19 @@ def fantasy_score_frame(pir_values: Any, won: Any) -> Any:
 
     `pir_values`: Series με ακέραιο PIR, `won`: Series με bool (ίδιο index). Επιστρέφει Series
     τύπου float, με τις ίδιες τιμές που θα έδινε το `fantasy_score()` γραμμή προς γραμμή.
+
+    Η είσοδος ελέγχεται με τους ίδιους αυστηρούς κανόνες με το `fantasy_score()`: το PIR πρέπει να
+    είναι ακέραιου τύπου (όχι bool ή float, χωρίς ελλιπείς τιμές) και το `won` τύπου bool
+    (`TypeError` για NaN, str, ακεραίους, None, και `ValueError` για ελλιπείς τιμές nullable
+    boolean). Δεν γίνεται σιωπηλό `astype(bool)`, που θα μετέτρεπε μια ελλιπή τιμή σε νίκη.
+    Τα δύο Series πρέπει να έχουν το ίδιο index (`ValueError` αλλιώς). Κενή είσοδος δίνει κενό
+    Series float.
     """
-    with_bonus = pir_values * WIN_BONUS_NUM / WIN_BONUS_DEN
-    return with_bonus.where(won.astype(bool), pir_values.astype(float))
+    if len(pir_values) == 0 and len(won) == 0:
+        return pir_values.astype(float)
+    values = _checked_pir_values(pir_values)
+    won_mask = _checked_won_mask(won)
+    if not values.index.equals(won_mask.index):
+        raise ValueError("pir and won must have the same index")
+    with_bonus = (values * WIN_BONUS_DEN + values.abs() * WIN_BONUS_NUM) / WIN_BONUS_DEN
+    return with_bonus.where(won_mask, values.astype(float))

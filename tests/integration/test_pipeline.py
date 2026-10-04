@@ -6,6 +6,7 @@
 
 import logging
 from datetime import date, datetime
+from decimal import Decimal
 
 import pandas as pd
 import pytest
@@ -135,7 +136,8 @@ class TestPipelineFromCache:
             13.2,
         )
         assert (hoard["pir"], hoard["won"], hoard["fantasy_score"]) == (22, False, 22.0)
-        assert (hazer["pir"], hazer["won"], hazer["fantasy_score"]) == (-4, True, -4.4)
+        # Νίκη με αρνητικό PIR: το μπόνους προστίθεται θετικό (FANTASY_RULES.md, 3.4).
+        assert (hazer["pir"], hazer["won"], hazer["fantasy_score"]) == (-4, True, -3.6)
         assert (beaubois["dnp"], beaubois["minutes"], beaubois["fantasy_score"]) == (True, 0.0, 0.0)
         assert larkin["team_code"] == "IST" and larkin["opp_code"] == "TEL" and larkin["home"]
 
@@ -143,8 +145,12 @@ class TestPipelineFromCache:
         run_from_cache(data_dir, db_url)
         rows = read_table(db_url, models.player_games)
         assert (rows["pir"] == rows["valuation"]).all()
-        expected = rows["pir"].where(~rows["won"], rows["pir"] * 11 / 10)
-        assert (rows["fantasy_score"] == expected).all()
+        # Ακριβής έλεγχος σε δεκαδικά (χωρίς κινητή υποδιαστολή): PIR + |PIR|/10 σε νίκη, αλλιώς PIR
+        for row in rows.itertuples():
+            pir_value = Decimal(int(row.pir))
+            expected = pir_value + abs(pir_value) / 10 if row.won else pir_value
+            assert Decimal(repr(float(row.fantasy_score))) == expected, row
+        assert (rows["won"] & (rows["pir"] < 0)).any()  # το fixture περιέχει νίκη με αρνητικό PIR
         assert rows["dnp"].sum() == 11
         dnp = rows[rows["dnp"]]
         assert (dnp["fantasy_score"] == 0).all() and (dnp["minutes"] == 0).all()
@@ -518,7 +524,7 @@ class TestVerify:
             conn.execute(
                 update(models.player_games)
                 .where(models.player_games.c.player_id == "P007200")
-                .values(fantasy_score=12.0)  # νίκη αλλά χωρίς το ×1,1
+                .values(fantasy_score=12.0)  # νίκη αλλά χωρίς το μπόνους νίκης
             )
         result = verify.verify(loaded, data_dir / "reports", expected_games={})
         assert result.fantasy_differs == 1
