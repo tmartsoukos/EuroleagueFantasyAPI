@@ -1,0 +1,16 @@
+{
+  "name": "Euroleague Fantasy",
+  "short_name": "EL Fantasy",
+  "description": "Προβλέψεις fantasy score παικτών Euroleague, κατάταξη και ρόστερ.",
+  "lang": "el",
+  "start_url": "./#/rankings",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#d9480f",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

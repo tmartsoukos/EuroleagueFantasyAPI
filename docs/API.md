@@ -16,7 +16,7 @@
 | `POST /admin/refresh` | `X-API-Key` | Ανανέωση δεδομένων από τη βάση μετά από νέο ingestion |
 | `GET /docs`, `/redoc`, `/openapi.json` | δημόσιο | Swagger UI, ReDoc και το σχήμα OpenAPI |
 
-Το `GET /` ανακατευθύνει (307) στο `/docs`.
+Το `GET /` ανακατευθύνει (307) στη web εφαρμογή `/app/` (`docs/WEB_APP.md`). Το `/app/*` είναι στατικά αρχεία και δεν ανήκει στο OpenAPI.
 
 ### Αρχεία
 

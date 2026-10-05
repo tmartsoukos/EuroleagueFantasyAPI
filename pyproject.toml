@@ -25,7 +25,7 @@ where = ["src"]
 
 # Τα migrations (αρχεία SQL της Φάσης 5) ανήκουν στο πακέτο και ακολουθούν το `pip install`.
 [tool.setuptools.package-data]
-elfantasy = ["db/migrations/*.sql"]
+elfantasy = ["db/migrations/*.sql", "web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

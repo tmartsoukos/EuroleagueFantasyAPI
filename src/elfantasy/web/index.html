@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Euroleague Fantasy</title>
+  <meta name="description" content="Προβλέψεις fantasy score παικτών Euroleague, κατάταξη και ρόστερ.">
+  <meta name="theme-color" content="#d9480f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="app.css">
+  <script src="theme.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Μετάβαση στο περιεχόμενο</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <h1>Euroleague Fantasy</h1>
+    </div>
+    <span id="health" class="pill" role="status">Έλεγχος…</span>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="Εναλλαγή φωτεινού και σκούρου θέματος" title="Εναλλαγή θέματος">◐</button>
+  </header>
+
+  <div id="wake" class="banner" role="status" hidden>
+    Ο server ξυπνάει (δωρεάν πλάνο). Το πρώτο αίτημα μπορεί να πάρει έως ένα λεπτό…
+  </div>
+
+  <nav class="tabs" aria-label="Κύρια πλοήγηση">
+    <a href="#/rankings" data-view="rankings">Κατάταξη</a>
+    <a href="#/player" data-view="player">Παίκτης</a>
+    <a href="#/lineup" data-view="lineup">Ρόστερ</a>
+    <a href="#/admin" data-view="admin">Διαχείριση</a>
+  </nav>
+
+  <main id="main" tabindex="-1"></main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p class="noscript">Η εφαρμογή χρειάζεται JavaScript.</p></noscript>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

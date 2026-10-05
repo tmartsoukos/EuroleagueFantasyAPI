@@ -278,8 +278,9 @@ class TestDocsPages:
         assert response.status_code == 200
         assert "redoc" in response.text.lower()
 
-    def test_the_root_redirects_to_the_docs_and_is_not_in_the_schema(self, client, spec):
+    def test_the_root_redirects_to_the_web_app_and_is_not_in_the_schema(self, client, spec):
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 307
-        assert response.headers["location"] == "/docs"
+        assert response.headers["location"] == "/app/"
         assert "/" not in spec["paths"]
+        assert not any(path.startswith("/app") for path in spec["paths"])

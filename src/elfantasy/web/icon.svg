@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Euroleague Fantasy">
+  <rect width="512" height="512" rx="112" fill="#d9480f"/>
+  <circle cx="256" cy="256" r="164" fill="#ff922b" stroke="#2b1408" stroke-width="16"/>
+  <g fill="none" stroke="#2b1408" stroke-width="16" stroke-linecap="round">
+    <path d="M92 256h328M256 92v328"/>
+    <path d="M140 140c60 40 60 192 0 232M372 140c-60 40-60 192 0 232"/>
+  </g>
+</svg>

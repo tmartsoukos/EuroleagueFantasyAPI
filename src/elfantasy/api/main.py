@@ -10,10 +10,12 @@
 """
 
 import logging
+import mimetypes
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from importlib import metadata
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -21,8 +23,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.responses import Response
 
 from elfantasy.api import state as app_state
 from elfantasy.api.limits import MAX_REQUEST_BODY_BYTES, BodySizeLimitMiddleware
@@ -41,6 +45,31 @@ except metadata.PackageNotFoundError:  # π.χ. τρέξιμο από τον π�
     API_VERSION = "0.1.0"
 
 API_TITLE = "Euroleague Fantasy Points Predictor API"
+
+# Η web εφαρμογή (στατικά αρχεία χωρίς build) ανήκει στο πακέτο και σερβίρεται από το ίδιο origin.
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+WEB_MOUNT_PATH = "/app"
+
+# Ο τύπος αρχείου προέρχεται από το σύστημα (στα Windows από το μητρώο, που μπορεί να δίνει στο
+# .js τον τύπο text/plain, τον οποίο ο browser απορρίπτει για ES modules). Ορίζονται ρητά.
+for _suffix, _media_type in {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".svg": "image/svg+xml",
+    ".webmanifest": "application/manifest+json",
+}.items():
+    mimetypes.add_type(_media_type, _suffix)
+
+
+class WebFiles(StaticFiles):
+    """Στατικά αρχεία της εφαρμογής με `Cache-Control: no-cache`: ο browser ρωτά (ETag) σε κάθε
+    φόρτωση, ώστε μετά από deploy να μη μένουν παλιά modules από την ευρετική cache."""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
 
 API_DESCRIPTION = """\
 Υπηρεσία που προβλέπει το **fantasy score** ενός παίκτη Euroleague για τον **επόμενο αγώνα** της
@@ -144,6 +173,8 @@ def create_app(
     app.include_router(availability_router.router)
     app.include_router(admin.router)
     _register_handlers(app)
+    # Τελευταίο, ώστε να μη σκιάζει κανένα endpoint του API.
+    app.mount(WEB_MOUNT_PATH, WebFiles(directory=WEB_DIR, html=True), name="web")
     return app
 
 
@@ -164,7 +195,7 @@ def _register_handlers(app: FastAPI) -> None:
 
     @app.get("/", include_in_schema=False)
     def root() -> RedirectResponse:
-        return RedirectResponse(url="/docs")
+        return RedirectResponse(url=f"{WEB_MOUNT_PATH}/")
 
     @app.exception_handler(NotFoundError)
     async def not_found_handler(_request: Request, exc: NotFoundError) -> JSONResponse:

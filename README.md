@@ -14,15 +14,16 @@
 3. [Πόσο καλό είναι το μοντέλο](#πόσο-καλό-είναι-το-μοντέλο)
 4. [Γρήγορη εκκίνηση (setup)](#γρήγορη-εκκίνηση-setup)
 5. [Χρήση του API](#χρήση-του-api)
-6. [Ρυθμίσεις](#ρυθμίσεις)
-7. [Δεδομένα και ingestion](#δεδομένα-και-ingestion)
-8. [Εκπαίδευση του μοντέλου](#εκπαίδευση-του-μοντέλου)
-9. [Βάση δεδομένων: SQLite και Supabase](#βάση-δεδομένων-sqlite-και-supabase)
-10. [Tests και ποιότητα](#tests-και-ποιότητα)
-11. [CI/CD και deploy στο Render](#cicd-και-deploy-στο-render)
-12. [Δομή του repo](#δομή-του-repo)
-13. [Περιορισμοί](#περιορισμοί)
-14. [Τεκμηρίωση](#τεκμηρίωση)
+6. [Web εφαρμογή](#web-εφαρμογή)
+7. [Ρυθμίσεις](#ρυθμίσεις)
+8. [Δεδομένα και ingestion](#δεδομένα-και-ingestion)
+9. [Εκπαίδευση του μοντέλου](#εκπαίδευση-του-μοντέλου)
+10. [Βάση δεδομένων: SQLite και Supabase](#βάση-δεδομένων-sqlite-και-supabase)
+11. [Tests και ποιότητα](#tests-και-ποιότητα)
+12. [CI/CD και deploy στο Render](#cicd-και-deploy-στο-render)
+13. [Δομή του repo](#δομή-του-repo)
+14. [Περιορισμοί](#περιορισμοί)
+15. [Τεκμηρίωση](#τεκμηρίωση)
 
 ## Τι προβλέπει
 
@@ -108,7 +109,7 @@ python -m elfantasy.ingest.pipeline --seasons 2016-2026
 uvicorn elfantasy.api.main:app --reload
 ```
 
-Άνοιξε το Swagger στο <http://127.0.0.1:8000/docs>. Χωρίς βάση το API ξεκινά σε **degraded** κατάσταση (`GET /health` απαντά 503 με τον λόγο· ποτέ stack trace).
+Άνοιξε την [web εφαρμογή](#web-εφαρμογή) στο <http://127.0.0.1:8000/> (ανακατευθύνει στο `/app/`) ή το Swagger στο <http://127.0.0.1:8000/docs>. Χωρίς βάση το API ξεκινά σε **degraded** κατάσταση (`GET /health` απαντά 503 με τον λόγο· ποτέ stack trace).
 
 ## Χρήση του API
 
@@ -154,6 +155,17 @@ curl -s -X POST http://127.0.0.1:8000/availability \
 ```
 
 Με `status: "out"` το `predicted_fantasy` γίνεται `0.0` (το `model_predicted_fantasy` μένει όπως το έβγαλε το μοντέλο) και ο παίκτης εξαιρείται από το `/rankings`. Πλήρης αναφορά (παράμετροι, κωδικοί σφάλματος, ασφάλεια): [`docs/API.md`](docs/API.md).
+
+## Web εφαρμογή
+
+Το API σερβίρει μια εφαρμογή (PWA, ελληνικό UI, φωτεινό/σκούρο θέμα) στο `/app/`: <https://euroleague-fantasy-api.onrender.com/app/>. Είναι στατικά αρχεία χωρίς build και χωρίς εξωτερικές βιβλιοθήκες, στο ίδιο origin με το API (άρα χωρίς CORS και με ένα μόνο deploy).
+
+- **Κατάταξη:** προβλέψεις για όλους τους ενεργούς παίκτες, φίλτρο ομάδας και ονόματος.
+- **Παίκτης:** πρόβλεψη, επόμενος αγώνας, διαθεσιμότητα και features.
+- **Ρόστερ:** 10 παίκτες (πεντάδα, έκτος, πάγκος ×0,5), captain ×2, όριο 6 ανά ομάδα, αυτόματη συμπλήρωση. Αποθηκεύεται στη συσκευή.
+- **Διαχείριση:** τραυματισμοί (`/availability`) και ανανέωση δεδομένων, με το `ADMIN_API_KEY` μόνο στην καρτέλα του browser.
+
+Λεπτομέρειες, όρια και δοκιμές: [`docs/WEB_APP.md`](docs/WEB_APP.md).
 
 ## Ρυθμίσεις
 
@@ -264,6 +276,7 @@ src/elfantasy/
   features/         42 features χωρίς διαρροή (μία διαδρομή για training και πρόβλεψη)
   model/            train, artifact, Predictor, holdout, καταγραφή και αξιολόγηση προβλέψεων
   api/              FastAPI: routers, schemas, διαθεσιμότητα, health
+  web/              web εφαρμογή (HTML/CSS/JS χωρίς build), σερβίρεται στο /app/
 models/             model.joblib και metrics.json (committed, ~250 KB)
 tests/              unit, integration, quality, fixtures
 scripts/            εργαλεία του CI (badge, smoke check, quality summary)
@@ -281,7 +294,7 @@ constraints.txt     καρφωμένες εκδόσεις πακέτων
 - **Το MAE του 2025 δεν είναι εγγυημένο για τη σεζόν 2026-27.**
 - **Το free tier του Render και του Supabase έχουν περιορισμούς:** αδράνεια και cold start στο Render, παύση του project του Supabase μετά από μία εβδομάδα αδράνειας, 512 MB μνήμη.
 - **Δεδομένα:** το API της EuroLeague δεν έχει επίσημους όρους χρήσης που να έχουν ελεγχθεί εδώ, και το πακέτο `euroleague-api` είναι GPLv3 (χρησιμοποιείται ως εξάρτηση, δεν ενσωματώνεται). Το repo δεν περιέχει αρχείο άδειας (LICENSE).
-- Το API δεν έχει rate limiting ούτε CORS· αν χρειαστεί κλήση από browser σε άλλο domain πρέπει να προστεθεί CORS.
+- Το API δεν έχει rate limiting ούτε CORS· η web εφαρμογή δουλεύει επειδή σερβίρεται από το ίδιο origin. Αν χρειαστεί κλήση από browser σε άλλο domain πρέπει να προστεθεί CORS.
 
 ## Τεκμηρίωση
 
@@ -291,6 +304,7 @@ constraints.txt     καρφωμένες εκδόσεις πακέτων
 |---|---|
 | [`FANTASY_RULES.md`](FANTASY_RULES.md) | Ο τύπος του fantasy score, πηγές, παραδείγματα, ό,τι δεν επιβεβαιώθηκε |
 | [`docs/API.md`](docs/API.md) | Endpoints, ρυθμίσεις, διαθεσιμότητα παικτών, ασφάλεια |
+| [`docs/WEB_APP.md`](docs/WEB_APP.md) | Web εφαρμογή (PWA): οθόνες, ρόστερ, ασφάλεια, δοκιμές |
 | [`docs/MODEL.md`](docs/MODEL.md) | Features, backtest, αποτελέσματα, quality gate, `Predictor` |
 | [`docs/INGESTION.md`](docs/INGESTION.md) | Λήψη, καθαρισμός και αποθήκευση δεδομένων, αποτελέσματα του πλήρους τρεξίματος |
 | [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | Το πακέτο `euroleague-api`: endpoints, στήλες, παγίδες, όριο ρυθμού |
